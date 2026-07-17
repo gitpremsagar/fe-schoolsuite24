@@ -1,0 +1,84 @@
+import { apiFetch } from "@/lib/api/client";
+
+export const schoolApi = {
+  me: () => apiFetch<{ school: Record<string, unknown> }>("/schools/me"),
+  updateMe: (body: Record<string, unknown>) =>
+    apiFetch("/schools/me", { method: "PATCH", body }),
+  dashboard: () =>
+    apiFetch<Record<string, unknown>>("/schools/dashboard"),
+  academicYears: {
+    list: () =>
+      apiFetch<{ academicYears: Array<Record<string, unknown>> }>(
+        "/academic-years",
+      ),
+    create: (body: Record<string, unknown>) =>
+      apiFetch("/academic-years", { method: "POST", body }),
+    update: (id: string, body: Record<string, unknown>) =>
+      apiFetch(`/academic-years/${id}`, { method: "PATCH", body }),
+  },
+  classes: {
+    list: (academicYearId?: string) => {
+      const qs = academicYearId ? `?academicYearId=${academicYearId}` : "";
+      return apiFetch<{ classes: Array<Record<string, unknown>> }>(
+        `/classes${qs}`,
+      );
+    },
+    mine: () =>
+      apiFetch<{ classes: Array<Record<string, unknown>> }>("/classes/mine"),
+    create: (body: Record<string, unknown>) =>
+      apiFetch("/classes", { method: "POST", body }),
+    update: (id: string, body: Record<string, unknown>) =>
+      apiFetch(`/classes/${id}`, { method: "PATCH", body }),
+    assignTeacher: (id: string, body: Record<string, unknown>) =>
+      apiFetch(`/classes/${id}/teachers`, { method: "POST", body }),
+  },
+  students: {
+    list: () =>
+      apiFetch<{ students: Array<Record<string, unknown>> }>("/students"),
+    create: (body: Record<string, unknown>) =>
+      apiFetch("/students", { method: "POST", body }),
+    enroll: (id: string, body: Record<string, unknown>) =>
+      apiFetch(`/students/${id}/enrollments`, { method: "POST", body }),
+    me: () => apiFetch<{ student: Record<string, unknown> }>("/students/me"),
+  },
+  staff: {
+    list: (staffType?: string) => {
+      const qs = staffType ? `?staffType=${staffType}` : "";
+      return apiFetch<{ staff: Array<Record<string, unknown>> }>(`/staff${qs}`);
+    },
+    create: (body: Record<string, unknown>) =>
+      apiFetch("/staff", { method: "POST", body }),
+    me: () => apiFetch<{ staff: Record<string, unknown> }>("/staff/me"),
+  },
+  billing: {
+    summary: () => apiFetch<Record<string, unknown>>("/billing/summary"),
+  },
+};
+
+export const attendanceApi = {
+  classAttendance: (classId: string, date: string) =>
+    apiFetch<Record<string, unknown>>(
+      `/attendance/students?classId=${classId}&date=${encodeURIComponent(date)}`,
+    ),
+  saveStudentAttendance: (body: Record<string, unknown>) =>
+    apiFetch("/attendance/students", { method: "POST", body }),
+  myStudentAttendance: () =>
+    apiFetch<{ records: Array<Record<string, unknown>> }>(
+      "/attendance/students/me",
+    ),
+  staffToday: () =>
+    apiFetch<{ attendance: Record<string, unknown> | null }>(
+      "/attendance/staff/today",
+    ),
+  punchIn: () => apiFetch("/attendance/staff/punch-in", { method: "POST" }),
+  punchOut: () => apiFetch("/attendance/staff/punch-out", { method: "POST" }),
+  listStaff: (from?: string, to?: string) => {
+    const params = new URLSearchParams();
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    const qs = params.toString();
+    return apiFetch<{ records: Array<Record<string, unknown>> }>(
+      `/attendance/staff${qs ? `?${qs}` : ""}`,
+    );
+  },
+};
