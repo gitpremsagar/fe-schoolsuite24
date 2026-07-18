@@ -8,6 +8,19 @@ import { Button } from "@/components/ui/button";
 import { dashboardPathForRole, type UserRole } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
+function isNavActive(pathname: string, href: string): boolean {
+  if (pathname === href) return true;
+  const overviewRoots = new Set([
+    "/dashboard/school",
+    "/dashboard/super-admin",
+    "/dashboard/teacher",
+    "/dashboard/employee",
+    "/dashboard/student",
+  ]);
+  if (overviewRoots.has(href)) return false;
+  return pathname.startsWith(`${href}/`);
+}
+
 type NavItem = { href: string; label: string };
 
 function navForRole(role: UserRole): NavItem[] {
@@ -101,7 +114,7 @@ export function DashboardShell({
                 href={item.href}
                 className={cn(
                   "block rounded-xl px-3 py-2 text-sm transition",
-                  pathname === item.href
+                  isNavActive(pathname, item.href)
                     ? "bg-primary text-primary-foreground"
                     : "hover:bg-muted",
                 )}
@@ -143,7 +156,7 @@ export function DashboardShell({
               <Link key={item.href} href={item.href}>
                 <Button
                   size="sm"
-                  variant={pathname === item.href ? "default" : "outline"}
+                  variant={isNavActive(pathname, item.href) ? "default" : "outline"}
                 >
                   {item.label}
                 </Button>

@@ -56,7 +56,6 @@ export default function ClassesPage() {
     name: "",
     section: "",
     gradeLevel: "",
-    roomNumber: "",
   });
   const [saving, setSaving] = useState(false);
 
@@ -118,15 +117,13 @@ export default function ClassesPage() {
         academicYearId: form.academicYearId,
         name: form.name,
         ...(form.section ? { section: form.section } : {}),
-        ...(form.gradeLevel ? { gradeLevel: Number(form.gradeLevel) } : {}),
-        ...(form.roomNumber ? { roomNumber: form.roomNumber } : {}),
+        ...(form.gradeLevel ? { gradeLevel: form.gradeLevel.trim() } : {}),
       });
       setForm((p) => ({
         ...p,
         name: "",
         section: "",
         gradeLevel: "",
-        roomNumber: "",
       }));
       setShowForm(false);
       await loadClasses(filterYear);
@@ -216,21 +213,12 @@ export default function ClassesPage() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label>Grade level</Label>
+                    <Label>Grade</Label>
                     <Input
-                      type="number"
                       value={form.gradeLevel}
+                      placeholder="Nursery, LKG, UKG, 1, 2..."
                       onChange={(e) =>
                         setForm((p) => ({ ...p, gradeLevel: e.target.value }))
-                      }
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label>Room number</Label>
-                    <Input
-                      value={form.roomNumber}
-                      onChange={(e) =>
-                        setForm((p) => ({ ...p, roomNumber: e.target.value }))
                       }
                     />
                   </div>
@@ -308,9 +296,7 @@ export default function ClassesPage() {
                           {str(c.name)}
                         </TableCell>
                         <TableCell>{str(c.section) || "—"}</TableCell>
-                        <TableCell>
-                          {c.gradeLevel == null ? "—" : num(c.gradeLevel)}
-                        </TableCell>
+                        <TableCell>{str(c.gradeLevel) || "—"}</TableCell>
                         <TableCell>{str(year.name) || "—"}</TableCell>
                         <TableCell>{num(count.enrollments)}</TableCell>
                       </TableRow>

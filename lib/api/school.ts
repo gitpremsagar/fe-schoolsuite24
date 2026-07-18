@@ -60,8 +60,20 @@ export const attendanceApi = {
     apiFetch<Record<string, unknown>>(
       `/attendance/students?classId=${classId}&date=${encodeURIComponent(date)}`,
     ),
+  classMonth: (classId: string, year: number, month: number) =>
+    apiFetch<{
+      year: number;
+      month: number;
+      daysInMonth: number;
+      days: number[];
+      students: Array<Record<string, unknown>>;
+    }>(
+      `/attendance/students/month?classId=${classId}&year=${year}&month=${month}`,
+    ),
   saveStudentAttendance: (body: Record<string, unknown>) =>
     apiFetch("/attendance/students", { method: "POST", body }),
+  saveStudentMonth: (body: Record<string, unknown>) =>
+    apiFetch("/attendance/students/month", { method: "POST", body }),
   myStudentAttendance: () =>
     apiFetch<{ records: Array<Record<string, unknown>> }>(
       "/attendance/students/me",
@@ -81,4 +93,12 @@ export const attendanceApi = {
       `/attendance/staff${qs ? `?${qs}` : ""}`,
     );
   },
+  staffMonth: (year: number, month: number) =>
+    apiFetch<{
+      year: number;
+      month: number;
+      daysInMonth: number;
+      days: number[];
+      staff: Array<Record<string, unknown>>;
+    }>(`/attendance/staff/month?year=${year}&month=${month}`),
 };
