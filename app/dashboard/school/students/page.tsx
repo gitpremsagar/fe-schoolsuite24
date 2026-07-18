@@ -52,6 +52,9 @@ export default function StudentsPage() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
 
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [showEnrollForm, setShowEnrollForm] = useState(false);
+
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -162,6 +165,7 @@ export default function StudentsPage() {
         guardianPhone: "",
         classId: "",
       }));
+      setShowCreateForm(false);
       await load();
     } catch (err) {
       handleErr(err, "Failed to create student");
@@ -183,6 +187,7 @@ export default function StudentsPage() {
       });
       setMessage("Student enrolled.");
       setEnroll((p) => ({ ...p, studentId: "", classId: "", rollNumber: "" }));
+      setShowEnrollForm(false);
       await load();
     } catch (err) {
       handleErr(err, "Failed to enroll student");
@@ -194,252 +199,291 @@ export default function StudentsPage() {
   return (
     <DashboardShell allowedRoles={["ADMIN"]}>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-semibold">Students</h1>
-          <p className="text-sm text-muted-foreground">
-            Create student accounts and enroll them into classes.
-          </p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold">Students</h1>
+            <p className="text-sm text-muted-foreground">
+              Create student accounts and enroll them into classes.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant={showCreateForm ? "outline" : "default"}
+              onClick={() => {
+                setShowCreateForm((v) => !v);
+                if (!showCreateForm) setShowEnrollForm(false);
+              }}
+            >
+              {showCreateForm ? "Cancel" : "Add student"}
+            </Button>
+            <Button
+              type="button"
+              variant={showEnrollForm ? "outline" : "secondary"}
+              onClick={() => {
+                setShowEnrollForm((v) => !v);
+                if (!showEnrollForm) setShowCreateForm(false);
+              }}
+            >
+              {showEnrollForm ? "Cancel" : "Enroll student"}
+            </Button>
+          </div>
         </div>
 
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
         {message ? <p className="text-sm text-green-600">{message}</p> : null}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Add student</CardTitle>
-            <CardDescription>
-              Optionally enroll into a class right away.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form className="grid gap-4 md:grid-cols-2" onSubmit={onCreate}>
-              <div className="space-y-1">
-                <Label>Name</Label>
-                <Input
-                  value={form.name}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, name: e.target.value }))
-                  }
-                  required
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>Email</Label>
-                <Input
-                  type="email"
-                  value={form.email}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, email: e.target.value }))
-                  }
-                  required
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>Password</Label>
-                <Input
-                  type="password"
-                  minLength={8}
-                  value={form.password}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, password: e.target.value }))
-                  }
-                  required
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>Phone</Label>
-                <Input
-                  value={form.phone}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, phone: e.target.value }))
-                  }
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>Admission number</Label>
-                <Input
-                  value={form.admissionNumber}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, admissionNumber: e.target.value }))
-                  }
-                  required
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>Roll number</Label>
-                <Input
-                  value={form.rollNumber}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, rollNumber: e.target.value }))
-                  }
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>Guardian name</Label>
-                <Input
-                  value={form.guardianName}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, guardianName: e.target.value }))
-                  }
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>Guardian phone</Label>
-                <Input
-                  value={form.guardianPhone}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, guardianPhone: e.target.value }))
-                  }
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>Academic year (optional)</Label>
-                <Select
-                  value={form.academicYearId}
-                  onValueChange={(v) =>
-                    setForm((p) => ({ ...p, academicYearId: v, classId: "" }))
-                  }
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select year" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {years.map((y) => (
-                      <SelectItem key={str(y.id)} value={str(y.id)}>
-                        {str(y.name)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label>Class (optional)</Label>
-                <Select
-                  value={form.classId}
-                  onValueChange={(v) =>
-                    setForm((p) => ({ ...p, classId: v }))
-                  }
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select class" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {classesForCreate.map((c) => (
-                      <SelectItem key={str(c.id)} value={str(c.id)}>
-                        {str(c.name)}
-                        {c.section ? ` - ${str(c.section)}` : ""}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="md:col-span-2">
-                <Button type="submit" disabled={saving}>
-                  {saving ? "Creating..." : "Create student"}
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Enroll existing student</CardTitle>
-            <CardDescription>
-              Move or enroll a student into a class for an academic year.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form className="grid gap-4 md:grid-cols-2" onSubmit={onEnroll}>
-              <div className="space-y-1">
-                <Label>Student</Label>
-                <Select
-                  value={enroll.studentId}
-                  onValueChange={(v) =>
-                    setEnroll((p) => ({ ...p, studentId: v }))
-                  }
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select student" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {students.map((s) => {
-                      const user = obj(s.user);
-                      return (
-                        <SelectItem key={str(s.id)} value={str(s.id)}>
-                          {str(user.name)} ({str(s.admissionNumber)})
+        {showCreateForm ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>New student</CardTitle>
+              <CardDescription>
+                Optionally enroll into a class right away.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form className="grid gap-4 md:grid-cols-2" onSubmit={onCreate}>
+                <div className="space-y-1">
+                  <Label>Name</Label>
+                  <Input
+                    value={form.name}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, name: e.target.value }))
+                    }
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Email</Label>
+                  <Input
+                    type="email"
+                    value={form.email}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, email: e.target.value }))
+                    }
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Password</Label>
+                  <Input
+                    type="password"
+                    minLength={8}
+                    value={form.password}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, password: e.target.value }))
+                    }
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Phone</Label>
+                  <Input
+                    value={form.phone}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, phone: e.target.value }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Admission number</Label>
+                  <Input
+                    value={form.admissionNumber}
+                    onChange={(e) =>
+                      setForm((p) => ({
+                        ...p,
+                        admissionNumber: e.target.value,
+                      }))
+                    }
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Roll number</Label>
+                  <Input
+                    value={form.rollNumber}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, rollNumber: e.target.value }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Guardian name</Label>
+                  <Input
+                    value={form.guardianName}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, guardianName: e.target.value }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Guardian phone</Label>
+                  <Input
+                    value={form.guardianPhone}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, guardianPhone: e.target.value }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Academic year (optional)</Label>
+                  <Select
+                    value={form.academicYearId}
+                    onValueChange={(v) =>
+                      setForm((p) => ({
+                        ...p,
+                        academicYearId: v,
+                        classId: "",
+                      }))
+                    }
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select year" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {years.map((y) => (
+                        <SelectItem key={str(y.id)} value={str(y.id)}>
+                          {str(y.name)}
                         </SelectItem>
-                      );
-                    })}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label>Roll number</Label>
-                <Input
-                  value={enroll.rollNumber}
-                  onChange={(e) =>
-                    setEnroll((p) => ({ ...p, rollNumber: e.target.value }))
-                  }
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>Academic year</Label>
-                <Select
-                  value={enroll.academicYearId}
-                  onValueChange={(v) =>
-                    setEnroll((p) => ({ ...p, academicYearId: v, classId: "" }))
-                  }
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select year" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {years.map((y) => (
-                      <SelectItem key={str(y.id)} value={str(y.id)}>
-                        {str(y.name)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label>Class</Label>
-                <Select
-                  value={enroll.classId}
-                  onValueChange={(v) =>
-                    setEnroll((p) => ({ ...p, classId: v }))
-                  }
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select class" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {classesForEnroll.map((c) => (
-                      <SelectItem key={str(c.id)} value={str(c.id)}>
-                        {str(c.name)}
-                        {c.section ? ` - ${str(c.section)}` : ""}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="md:col-span-2">
-                <Button
-                  type="submit"
-                  disabled={
-                    enrolling ||
-                    !enroll.studentId ||
-                    !enroll.classId ||
-                    !enroll.academicYearId
-                  }
-                >
-                  {enrolling ? "Enrolling..." : "Enroll student"}
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label>Class (optional)</Label>
+                  <Select
+                    value={form.classId}
+                    onValueChange={(v) =>
+                      setForm((p) => ({ ...p, classId: v }))
+                    }
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select class" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {classesForCreate.map((c) => (
+                        <SelectItem key={str(c.id)} value={str(c.id)}>
+                          {str(c.name)}
+                          {c.section ? ` - ${str(c.section)}` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="md:col-span-2">
+                  <Button type="submit" disabled={saving}>
+                    {saving ? "Creating..." : "Create student"}
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {showEnrollForm ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Enroll existing student</CardTitle>
+              <CardDescription>
+                Move or enroll a student into a class for an academic year.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form className="grid gap-4 md:grid-cols-2" onSubmit={onEnroll}>
+                <div className="space-y-1">
+                  <Label>Student</Label>
+                  <Select
+                    value={enroll.studentId}
+                    onValueChange={(v) =>
+                      setEnroll((p) => ({ ...p, studentId: v }))
+                    }
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select student" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {students.map((s) => {
+                        const user = obj(s.user);
+                        return (
+                          <SelectItem key={str(s.id)} value={str(s.id)}>
+                            {str(user.name)} ({str(s.admissionNumber)})
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label>Roll number</Label>
+                  <Input
+                    value={enroll.rollNumber}
+                    onChange={(e) =>
+                      setEnroll((p) => ({ ...p, rollNumber: e.target.value }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Academic year</Label>
+                  <Select
+                    value={enroll.academicYearId}
+                    onValueChange={(v) =>
+                      setEnroll((p) => ({
+                        ...p,
+                        academicYearId: v,
+                        classId: "",
+                      }))
+                    }
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select year" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {years.map((y) => (
+                        <SelectItem key={str(y.id)} value={str(y.id)}>
+                          {str(y.name)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label>Class</Label>
+                  <Select
+                    value={enroll.classId}
+                    onValueChange={(v) =>
+                      setEnroll((p) => ({ ...p, classId: v }))
+                    }
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select class" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {classesForEnroll.map((c) => (
+                        <SelectItem key={str(c.id)} value={str(c.id)}>
+                          {str(c.name)}
+                          {c.section ? ` - ${str(c.section)}` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="md:col-span-2">
+                  <Button
+                    type="submit"
+                    disabled={
+                      enrolling ||
+                      !enroll.studentId ||
+                      !enroll.classId ||
+                      !enroll.academicYearId
+                    }
+                  >
+                    {enrolling ? "Enrolling..." : "Enroll student"}
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        ) : null}
 
         <Card>
           <CardContent className="p-0">

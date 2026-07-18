@@ -42,6 +42,7 @@ export default function AcademicYearsPage() {
   const [years, setYears] = useState<Row[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     name: "",
     startDate: "",
@@ -90,6 +91,7 @@ export default function AcademicYearsPage() {
         isCurrent: form.isCurrent,
       });
       setForm({ name: "", startDate: "", endDate: "", isCurrent: false });
+      setShowForm(false);
       await load();
     } catch (err) {
       handleErr(err, "Failed to create academic year");
@@ -111,74 +113,85 @@ export default function AcademicYearsPage() {
   return (
     <DashboardShell allowedRoles={["ADMIN"]}>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-semibold">Academic years</h1>
-          <p className="text-sm text-muted-foreground">
-            Create academic years and set the current one.
-          </p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold">Academic years</h1>
+            <p className="text-sm text-muted-foreground">
+              Create academic years and set the current one.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant={showForm ? "outline" : "default"}
+            onClick={() => setShowForm((v) => !v)}
+          >
+            {showForm ? "Cancel" : "Add academic year"}
+          </Button>
         </div>
 
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Create academic year</CardTitle>
-            <CardDescription>e.g. 2025-2026</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form className="grid gap-4 md:grid-cols-2" onSubmit={onCreate}>
-              <div className="space-y-1">
-                <Label>Name</Label>
-                <Input
-                  value={form.name}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, name: e.target.value }))
-                  }
-                  required
-                />
-              </div>
-              <div className="flex items-end">
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={form.isCurrent}
+        {showForm ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>New academic year</CardTitle>
+              <CardDescription>e.g. 2025-2026</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form className="grid gap-4 md:grid-cols-2" onSubmit={onCreate}>
+                <div className="space-y-1">
+                  <Label>Name</Label>
+                  <Input
+                    value={form.name}
                     onChange={(e) =>
-                      setForm((p) => ({ ...p, isCurrent: e.target.checked }))
+                      setForm((p) => ({ ...p, name: e.target.value }))
                     }
+                    required
                   />
-                  Set as current
-                </label>
-              </div>
-              <div className="space-y-1">
-                <Label>Start date</Label>
-                <Input
-                  type="date"
-                  value={form.startDate}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, startDate: e.target.value }))
-                  }
-                  required
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>End date</Label>
-                <Input
-                  type="date"
-                  value={form.endDate}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, endDate: e.target.value }))
-                  }
-                  required
-                />
-              </div>
-              <div className="md:col-span-2">
-                <Button type="submit" disabled={saving}>
-                  {saving ? "Creating..." : "Create academic year"}
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
+                </div>
+                <div className="flex items-end">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={form.isCurrent}
+                      onChange={(e) =>
+                        setForm((p) => ({ ...p, isCurrent: e.target.checked }))
+                      }
+                    />
+                    Set as current
+                  </label>
+                </div>
+                <div className="space-y-1">
+                  <Label>Start date</Label>
+                  <Input
+                    type="date"
+                    value={form.startDate}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, startDate: e.target.value }))
+                    }
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>End date</Label>
+                  <Input
+                    type="date"
+                    value={form.endDate}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, endDate: e.target.value }))
+                    }
+                    required
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <Button type="submit" disabled={saving}>
+                    {saving ? "Creating..." : "Create academic year"}
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        ) : null}
 
         <Card>
           <CardContent className="p-0">

@@ -50,6 +50,7 @@ export default function ClassesPage() {
   const [filterYear, setFilterYear] = useState<string>("ALL");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     academicYearId: "",
     name: "",
@@ -127,6 +128,7 @@ export default function ClassesPage() {
         gradeLevel: "",
         roomNumber: "",
       }));
+      setShowForm(false);
       await loadClasses(filterYear);
     } catch (err) {
       handleErr(err, "Failed to create class");
@@ -138,99 +140,113 @@ export default function ClassesPage() {
   return (
     <DashboardShell allowedRoles={["ADMIN"]}>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-semibold">Classes</h1>
-          <p className="text-sm text-muted-foreground">
-            Create classes and view them by academic year.
-          </p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold">Classes</h1>
+            <p className="text-sm text-muted-foreground">
+              Create classes and view them by academic year.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant={showForm ? "outline" : "default"}
+            onClick={() => setShowForm((v) => !v)}
+          >
+            {showForm ? "Cancel" : "Add class"}
+          </Button>
         </div>
 
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Create class</CardTitle>
-            <CardDescription>
-              A class belongs to a specific academic year.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {years.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                Create an academic year first.
-              </p>
-            ) : (
-              <form className="grid gap-4 md:grid-cols-2" onSubmit={onCreate}>
-                <div className="space-y-1">
-                  <Label>Academic year</Label>
-                  <Select
-                    value={form.academicYearId}
-                    onValueChange={(v) =>
-                      setForm((p) => ({ ...p, academicYearId: v }))
-                    }
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select year" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {years.map((y) => (
-                        <SelectItem key={str(y.id)} value={str(y.id)}>
-                          {str(y.name)}
-                          {y.isCurrent ? " (current)" : ""}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <Label>Name</Label>
-                  <Input
-                    value={form.name}
-                    placeholder="Grade 5"
-                    onChange={(e) =>
-                      setForm((p) => ({ ...p, name: e.target.value }))
-                    }
-                    required
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label>Section</Label>
-                  <Input
-                    value={form.section}
-                    placeholder="A"
-                    onChange={(e) =>
-                      setForm((p) => ({ ...p, section: e.target.value }))
-                    }
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label>Grade level</Label>
-                  <Input
-                    type="number"
-                    value={form.gradeLevel}
-                    onChange={(e) =>
-                      setForm((p) => ({ ...p, gradeLevel: e.target.value }))
-                    }
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label>Room number</Label>
-                  <Input
-                    value={form.roomNumber}
-                    onChange={(e) =>
-                      setForm((p) => ({ ...p, roomNumber: e.target.value }))
-                    }
-                  />
-                </div>
-                <div className="flex items-end md:col-span-2">
-                  <Button type="submit" disabled={saving || !form.academicYearId}>
-                    {saving ? "Creating..." : "Create class"}
-                  </Button>
-                </div>
-              </form>
-            )}
-          </CardContent>
-        </Card>
+        {showForm ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>New class</CardTitle>
+              <CardDescription>
+                A class belongs to a specific academic year.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {years.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Create an academic year first.
+                </p>
+              ) : (
+                <form className="grid gap-4 md:grid-cols-2" onSubmit={onCreate}>
+                  <div className="space-y-1">
+                    <Label>Academic year</Label>
+                    <Select
+                      value={form.academicYearId}
+                      onValueChange={(v) =>
+                        setForm((p) => ({ ...p, academicYearId: v }))
+                      }
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select year" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {years.map((y) => (
+                          <SelectItem key={str(y.id)} value={str(y.id)}>
+                            {str(y.name)}
+                            {y.isCurrent ? " (current)" : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Name</Label>
+                    <Input
+                      value={form.name}
+                      placeholder="Grade 5"
+                      onChange={(e) =>
+                        setForm((p) => ({ ...p, name: e.target.value }))
+                      }
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Section</Label>
+                    <Input
+                      value={form.section}
+                      placeholder="A"
+                      onChange={(e) =>
+                        setForm((p) => ({ ...p, section: e.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Grade level</Label>
+                    <Input
+                      type="number"
+                      value={form.gradeLevel}
+                      onChange={(e) =>
+                        setForm((p) => ({ ...p, gradeLevel: e.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Room number</Label>
+                    <Input
+                      value={form.roomNumber}
+                      onChange={(e) =>
+                        setForm((p) => ({ ...p, roomNumber: e.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="flex items-end md:col-span-2">
+                    <Button
+                      type="submit"
+                      disabled={saving || !form.academicYearId}
+                    >
+                      {saving ? "Creating..." : "Create class"}
+                    </Button>
+                  </div>
+                </form>
+              )}
+            </CardContent>
+          </Card>
+        ) : null}
 
         <div className="flex items-end gap-3">
           <div className="space-y-1">

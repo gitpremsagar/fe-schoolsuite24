@@ -48,6 +48,7 @@ export default function StaffPage() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -123,6 +124,7 @@ export default function StaffPage() {
         department: "",
         joiningDate: "",
       }));
+      setShowForm(false);
       await load(filter);
     } catch (err) {
       handleErr(err, "Failed to create staff");
@@ -134,130 +136,141 @@ export default function StaffPage() {
   return (
     <DashboardShell allowedRoles={["ADMIN"]}>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-semibold">Staff</h1>
-          <p className="text-sm text-muted-foreground">
-            Create teachers and employees for your school.
-          </p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold">Staff</h1>
+            <p className="text-sm text-muted-foreground">
+              Create teachers and employees for your school.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant={showForm ? "outline" : "default"}
+            onClick={() => setShowForm((v) => !v)}
+          >
+            {showForm ? "Cancel" : "Add staff"}
+          </Button>
         </div>
 
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
         {message ? <p className="text-sm text-green-600">{message}</p> : null}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Add staff member</CardTitle>
-            <CardDescription>
-              Teachers can mark attendance; employees can punch in/out.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form className="grid gap-4 md:grid-cols-2" onSubmit={onCreate}>
-              <div className="space-y-1">
-                <Label>Name</Label>
-                <Input
-                  value={form.name}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, name: e.target.value }))
-                  }
-                  required
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>Email</Label>
-                <Input
-                  type="email"
-                  value={form.email}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, email: e.target.value }))
-                  }
-                  required
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>Password</Label>
-                <Input
-                  type="password"
-                  minLength={8}
-                  value={form.password}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, password: e.target.value }))
-                  }
-                  required
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>Phone</Label>
-                <Input
-                  value={form.phone}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, phone: e.target.value }))
-                  }
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>Staff type</Label>
-                <Select
-                  value={form.staffType}
-                  onValueChange={(v) =>
-                    setForm((p) => ({ ...p, staffType: v }))
-                  }
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="TEACHER">Teacher</SelectItem>
-                    <SelectItem value="EMPLOYEE">Employee</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label>Employee code</Label>
-                <Input
-                  value={form.employeeCode}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, employeeCode: e.target.value }))
-                  }
-                  required
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>Designation</Label>
-                <Input
-                  value={form.designation}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, designation: e.target.value }))
-                  }
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>Department</Label>
-                <Input
-                  value={form.department}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, department: e.target.value }))
-                  }
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>Joining date</Label>
-                <Input
-                  type="date"
-                  value={form.joiningDate}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, joiningDate: e.target.value }))
-                  }
-                />
-              </div>
-              <div className="flex items-end md:col-span-2">
-                <Button type="submit" disabled={saving}>
-                  {saving ? "Creating..." : "Create staff"}
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
+        {showForm ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>New staff member</CardTitle>
+              <CardDescription>
+                Teachers can mark attendance; employees can punch in/out.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form className="grid gap-4 md:grid-cols-2" onSubmit={onCreate}>
+                <div className="space-y-1">
+                  <Label>Name</Label>
+                  <Input
+                    value={form.name}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, name: e.target.value }))
+                    }
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Email</Label>
+                  <Input
+                    type="email"
+                    value={form.email}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, email: e.target.value }))
+                    }
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Password</Label>
+                  <Input
+                    type="password"
+                    minLength={8}
+                    value={form.password}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, password: e.target.value }))
+                    }
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Phone</Label>
+                  <Input
+                    value={form.phone}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, phone: e.target.value }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Staff type</Label>
+                  <Select
+                    value={form.staffType}
+                    onValueChange={(v) =>
+                      setForm((p) => ({ ...p, staffType: v }))
+                    }
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="TEACHER">Teacher</SelectItem>
+                      <SelectItem value="EMPLOYEE">Employee</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label>Employee code</Label>
+                  <Input
+                    value={form.employeeCode}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, employeeCode: e.target.value }))
+                    }
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Designation</Label>
+                  <Input
+                    value={form.designation}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, designation: e.target.value }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Department</Label>
+                  <Input
+                    value={form.department}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, department: e.target.value }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Joining date</Label>
+                  <Input
+                    type="date"
+                    value={form.joiningDate}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, joiningDate: e.target.value }))
+                    }
+                  />
+                </div>
+                <div className="flex items-end md:col-span-2">
+                  <Button type="submit" disabled={saving}>
+                    {saving ? "Creating..." : "Create staff"}
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        ) : null}
 
         <div className="flex items-end gap-3">
           <div className="space-y-1">

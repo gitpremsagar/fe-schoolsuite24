@@ -46,6 +46,7 @@ export default function PlansPage() {
   const [plans, setPlans] = useState<Row[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     name: "",
     description: "",
@@ -94,6 +95,7 @@ export default function PlansPage() {
         interval: "MONTHLY",
         trialDays: "30",
       });
+      setShowForm(false);
       await load();
     } catch (err) {
       setError(errorMessage(err, "Failed to create plan"));
@@ -105,104 +107,115 @@ export default function PlansPage() {
   return (
     <DashboardShell allowedRoles={["SUPER_ADMIN"]}>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-semibold">Subscription plans</h1>
-          <p className="text-sm text-muted-foreground">
-            Manage the pricing plans available to schools.
-          </p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold">Subscription plans</h1>
+            <p className="text-sm text-muted-foreground">
+              Manage the pricing plans available to schools.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant={showForm ? "outline" : "default"}
+            onClick={() => setShowForm((v) => !v)}
+          >
+            {showForm ? "Cancel" : "Add plan"}
+          </Button>
         </div>
 
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Create plan</CardTitle>
-            <CardDescription>Prices are in paise.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form
-              className="grid gap-4 md:grid-cols-2"
-              onSubmit={onCreate}
-            >
-              <div className="space-y-1">
-                <Label>Name</Label>
-                <Input
-                  value={form.name}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, name: e.target.value }))
-                  }
-                  required
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>Default price/student (paise)</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={form.defaultPricePerStudent}
-                  onChange={(e) =>
-                    setForm((p) => ({
-                      ...p,
-                      defaultPricePerStudent: e.target.value,
-                    }))
-                  }
-                  required
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>Currency</Label>
-                <Input
-                  value={form.currency}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, currency: e.target.value }))
-                  }
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>Interval</Label>
-                <Select
-                  value={form.interval}
-                  onValueChange={(v) =>
-                    setForm((p) => ({ ...p, interval: v }))
-                  }
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="MONTHLY">Monthly</SelectItem>
-                    <SelectItem value="YEARLY">Yearly</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label>Trial days</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={form.trialDays}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, trialDays: e.target.value }))
-                  }
-                />
-              </div>
-              <div className="space-y-1 md:col-span-2">
-                <Label>Description</Label>
-                <Textarea
-                  value={form.description}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, description: e.target.value }))
-                  }
-                />
-              </div>
-              <div className="md:col-span-2">
-                <Button type="submit" disabled={creating}>
-                  {creating ? "Creating..." : "Create plan"}
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
+        {showForm ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>New plan</CardTitle>
+              <CardDescription>Prices are in paise.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form
+                className="grid gap-4 md:grid-cols-2"
+                onSubmit={onCreate}
+              >
+                <div className="space-y-1">
+                  <Label>Name</Label>
+                  <Input
+                    value={form.name}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, name: e.target.value }))
+                    }
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Default price/student (paise)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={form.defaultPricePerStudent}
+                    onChange={(e) =>
+                      setForm((p) => ({
+                        ...p,
+                        defaultPricePerStudent: e.target.value,
+                      }))
+                    }
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Currency</Label>
+                  <Input
+                    value={form.currency}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, currency: e.target.value }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Interval</Label>
+                  <Select
+                    value={form.interval}
+                    onValueChange={(v) =>
+                      setForm((p) => ({ ...p, interval: v }))
+                    }
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="MONTHLY">Monthly</SelectItem>
+                      <SelectItem value="YEARLY">Yearly</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label>Trial days</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={form.trialDays}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, trialDays: e.target.value }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1 md:col-span-2">
+                  <Label>Description</Label>
+                  <Textarea
+                    value={form.description}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, description: e.target.value }))
+                    }
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <Button type="submit" disabled={creating}>
+                    {creating ? "Creating..." : "Create plan"}
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        ) : null}
 
         <Card>
           <CardContent className="p-0">
