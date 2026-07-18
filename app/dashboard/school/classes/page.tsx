@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/table";
 import { schoolApi } from "@/lib/api/school";
 import { errorMessage, isSubscriptionInactive } from "@/lib/api/subscription";
+import { CLASS_LEVELS } from "@/lib/class-levels";
 
 type Row = Record<string, unknown>;
 
@@ -49,15 +50,19 @@ export default function ClassesPage() {
   const [classes, setClasses] = useState<Row[]>([]);
   const [filterYear, setFilterYear] = useState<string>("ALL");
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     academicYearId: "",
-    name: "",
+    classLevel: "",
     section: "",
-    gradeLevel: "",
+    monthlyFee: "",
   });
   const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editFee, setEditFee] = useState("");
+  const [savingFee, setSavingFee] = useState(false);
 
   const handleErr = useCallback(
     (err: unknown, fallback: string) => {
@@ -112,25 +117,56 @@ export default function ClassesPage() {
     e.preventDefault();
     setSaving(true);
     setError("");
+    setMessage("");
     try {
+      const fee =
+        form.monthlyFee.trim() === "" ? null : Number(form.monthlyFee);
+      if (fee != null && (Number.isNaN(fee) || fee < 0)) {
+        setError("Monthly fee must be a non-negative number.");
+        setSaving(false);
+        return;
+      }
       await schoolApi.classes.create({
         academicYearId: form.academicYearId,
-        name: form.name,
+        classLevel: form.classLevel,
         ...(form.section ? { section: form.section } : {}),
-        ...(form.gradeLevel ? { gradeLevel: form.gradeLevel.trim() } : {}),
+        monthlyFee: fee,
       });
       setForm((p) => ({
         ...p,
-        name: "",
+        classLevel: "",
         section: "",
-        gradeLevel: "",
+        monthlyFee: "",
       }));
       setShowForm(false);
+      setMessage("Class created.");
       await loadClasses(filterYear);
     } catch (err) {
       handleErr(err, "Failed to create class");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function saveMonthlyFee(classId: string) {
+    setSavingFee(true);
+    setError("");
+    setMessage("");
+    try {
+      const fee = editFee.trim() === "" ? null : Number(editFee);
+      if (fee != null && (Number.isNaN(fee) || fee < 0)) {
+        setError("Monthly fee must be a non-negative number.");
+        setSavingFee(false);
+        return;
+      }
+      await schoolApi.classes.update(classId, { monthlyFee: fee });
+      setEditingId(null);
+      setMessage("Monthly fee updated.");
+      await loadClasses(filterYear);
+    } catch (err) {
+      handleErr(err, "Failed to update monthly fee");
+    } finally {
+      setSavingFee(false);
     }
   }
 
@@ -141,7 +177,8 @@ export default function ClassesPage() {
           <div>
             <h1 className="text-2xl font-semibold">Classes</h1>
             <p className="text-sm text-muted-foreground">
-              Create classes and view them by academic year.
+              Classes are identified by class level and section. Set monthly fee
+              per class.
             </p>
           </div>
           <Button
@@ -154,13 +191,14 @@ export default function ClassesPage() {
         </div>
 
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        {message ? <p className="text-sm text-green-600">{message}</p> : null}
 
         {showForm ? (
           <Card>
             <CardHeader>
               <CardTitle>New class</CardTitle>
               <CardDescription>
-                A class belongs to a specific academic year.
+                Choose a class level and optional section for an academic year.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -192,15 +230,24 @@ export default function ClassesPage() {
                     </Select>
                   </div>
                   <div className="space-y-1">
-                    <Label>Name</Label>
-                    <Input
-                      value={form.name}
-                      placeholder="Grade 5"
-                      onChange={(e) =>
-                        setForm((p) => ({ ...p, name: e.target.value }))
+                    <Label>Class</Label>
+                    <Select
+                      value={form.classLevel}
+                      onValueChange={(v) =>
+                        setForm((p) => ({ ...p, classLevel: v }))
                       }
-                      required
-                    />
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select class" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {CLASS_LEVELS.map((level) => (
+                          <SelectItem key={level} value={level}>
+                            {level}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="space-y-1">
                     <Label>Section</Label>
@@ -213,19 +260,24 @@ export default function ClassesPage() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label>Grade</Label>
+                    <Label>Monthly fee</Label>
                     <Input
-                      value={form.gradeLevel}
-                      placeholder="Nursery, LKG, UKG, 1, 2..."
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={form.monthlyFee}
+                      placeholder="Amount"
                       onChange={(e) =>
-                        setForm((p) => ({ ...p, gradeLevel: e.target.value }))
+                        setForm((p) => ({ ...p, monthlyFee: e.target.value }))
                       }
                     />
                   </div>
                   <div className="flex items-end md:col-span-2">
                     <Button
                       type="submit"
-                      disabled={saving || !form.academicYearId}
+                      disabled={
+                        saving || !form.academicYearId || !form.classLevel
+                      }
                     >
                       {saving ? "Creating..." : "Create class"}
                     </Button>
@@ -268,7 +320,7 @@ export default function ClassesPage() {
                 <TableRow>
                   <TableHead>Class</TableHead>
                   <TableHead>Section</TableHead>
-                  <TableHead>Grade</TableHead>
+                  <TableHead>Monthly fee</TableHead>
                   <TableHead>Year</TableHead>
                   <TableHead>Students</TableHead>
                 </TableRow>
@@ -290,13 +342,61 @@ export default function ClassesPage() {
                   classes.map((c) => {
                     const year = obj(c.academicYear);
                     const count = obj(c._count);
+                    const id = str(c.id);
+                    const isEditing = editingId === id;
                     return (
-                      <TableRow key={str(c.id)}>
+                      <TableRow key={id}>
                         <TableCell className="font-medium">
-                          {str(c.name)}
+                          {str(c.classLevel)}
                         </TableCell>
                         <TableCell>{str(c.section) || "—"}</TableCell>
-                        <TableCell>{str(c.gradeLevel) || "—"}</TableCell>
+                        <TableCell>
+                          {isEditing ? (
+                            <div className="flex items-center gap-2">
+                              <Input
+                                type="number"
+                                min={0}
+                                step="0.01"
+                                className="h-8 w-28"
+                                value={editFee}
+                                onChange={(e) => setEditFee(e.target.value)}
+                              />
+                              <Button
+                                type="button"
+                                size="sm"
+                                disabled={savingFee}
+                                onClick={() => void saveMonthlyFee(id)}
+                              >
+                                Save
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => setEditingId(null)}
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              className="text-left hover:underline"
+                              onClick={() => {
+                                setEditingId(id);
+                                setEditFee(
+                                  c.monthlyFee == null
+                                    ? ""
+                                    : String(c.monthlyFee),
+                                );
+                              }}
+                            >
+                              {c.monthlyFee == null
+                                ? "Set fee"
+                                : num(c.monthlyFee)}
+                            </button>
+                          )}
+                        </TableCell>
                         <TableCell>{str(year.name) || "—"}</TableCell>
                         <TableCell>{num(count.enrollments)}</TableCell>
                       </TableRow>

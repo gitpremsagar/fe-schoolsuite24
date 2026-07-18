@@ -13,10 +13,13 @@ import {
 } from "@/components/ui/select";
 import { attendanceApi, schoolApi } from "@/lib/api/school";
 import { errorMessage, isSubscriptionInactive } from "@/lib/api/subscription";
+import { formatClassLabel } from "@/lib/class-levels";
 import { cn } from "@/lib/utils";
 
 type Status = "PRESENT" | "ABSENT";
 type Row = Record<string, unknown>;
+
+const ALL_CLASSES = "__all__";
 
 function str(v: unknown): string {
   return v == null ? "" : String(v);
@@ -44,11 +47,18 @@ function cycleStatus(current: Status | null): Status | null {
   return null;
 }
 
+function classLabel(s: Row): string {
+  return formatClassLabel(
+    str(s.classLevel || s.className),
+    str(s.section) || null,
+  );
+}
+
 export default function StudentAttendancePage() {
   const router = useRouter();
   const initial = currentYearMonth();
   const [classes, setClasses] = useState<Row[]>([]);
-  const [classId, setClassId] = useState("");
+  const [classId, setClassId] = useState(ALL_CLASSES);
   const [year, setYear] = useState(initial.year);
   const [month, setMonth] = useState(initial.month);
   const [days, setDays] = useState<number[]>([]);
@@ -60,8 +70,10 @@ export default function StudentAttendancePage() {
   const [dirty, setDirty] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  const showAllClasses = classId === ALL_CLASSES;
 
   const handleErr = useCallback(
     (err: unknown, fallback: string) => {
@@ -86,12 +98,15 @@ export default function StudentAttendancePage() {
   }, [handleErr]);
 
   const load = useCallback(async () => {
-    if (!classId) return;
     setLoading(true);
     setError("");
     setMessage("");
     try {
-      const res = await attendanceApi.classMonth(classId, year, month);
+      const res = await attendanceApi.classMonth(
+        showAllClasses ? null : classId,
+        year,
+        month,
+      );
       setDays(res.days);
       setStudents(res.students);
       const next: Record<string, Record<string, Status | null>> = {};
@@ -107,7 +122,7 @@ export default function StudentAttendancePage() {
     } finally {
       setLoading(false);
     }
-  }, [classId, year, month, handleErr]);
+  }, [classId, showAllClasses, year, month, handleErr]);
 
   useEffect(() => {
     void load();
@@ -117,6 +132,14 @@ export default function StudentAttendancePage() {
     const y = new Date().getFullYear();
     return [y - 1, y, y + 1];
   }, []);
+
+  const studentClassById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const s of students) {
+      map.set(str(s.studentProfileId), str(s.classId));
+    }
+    return map;
+  }, [students]);
 
   function toggleCell(studentId: string, day: number) {
     setMarks((prev) => {
@@ -130,7 +153,6 @@ export default function StudentAttendancePage() {
   }
 
   async function save() {
-    if (!classId) return;
     setSaving(true);
     setError("");
     setMessage("");
@@ -139,14 +161,20 @@ export default function StudentAttendancePage() {
         studentProfileId: string;
         date: string;
         status: Status;
+        classId: string;
       }> = [];
       for (const [studentId, dayMap] of Object.entries(marks)) {
+        const studentClassId = showAllClasses
+          ? studentClassById.get(studentId)
+          : classId;
+        if (!studentClassId || studentClassId === ALL_CLASSES) continue;
         for (const [day, status] of Object.entries(dayMap)) {
           if (status === "PRESENT" || status === "ABSENT") {
             records.push({
               studentProfileId: studentId,
               date: dateKey(year, month, Number(day)),
               status,
+              classId: studentClassId,
             });
           }
         }
@@ -156,7 +184,7 @@ export default function StudentAttendancePage() {
         setSaving(false);
         return;
       }
-      await attendanceApi.saveStudentMonth({ classId, records });
+      await attendanceApi.saveStudentMonth({ records });
       setMessage("Monthly attendance saved.");
       setDirty(false);
       await load();
@@ -180,13 +208,16 @@ export default function StudentAttendancePage() {
           <Label>Class</Label>
           <Select value={classId} onValueChange={setClassId}>
             <SelectTrigger className="w-56">
-              <SelectValue placeholder="Select class" />
+              <SelectValue placeholder="All classes" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value={ALL_CLASSES}>All classes</SelectItem>
               {classes.map((c) => (
                 <SelectItem key={str(c.id)} value={str(c.id)}>
-                  {str(c.name)}
-                  {c.section ? ` - ${str(c.section)}` : ""}
+                  {formatClassLabel(
+                    str(c.classLevel) || str(c.name),
+                    str(c.section) || null,
+                  )}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -238,38 +269,52 @@ export default function StudentAttendancePage() {
             Next
           </Button>
         </div>
-        <Button type="button" onClick={save} disabled={!classId || saving || !dirty}>
+        <Button type="button" onClick={save} disabled={saving || !dirty}>
           {saving ? "Saving..." : "Save register"}
         </Button>
       </div>
 
       <p className="text-sm text-muted-foreground">
-        {monthLabel(year, month)} · Click a cell to cycle Present → Absent →
-        blank, then save.
+        {monthLabel(year, month)}
+        {showAllClasses ? " · All students" : ""} · Click a cell to cycle
+        Present → Absent → blank, then save.
       </p>
 
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
       {message ? <p className="text-sm text-green-600">{message}</p> : null}
 
-      {!classId ? (
-        <p className="text-sm text-muted-foreground">
-          Select a class to open the monthly register.
-        </p>
-      ) : loading ? (
+      {loading ? (
         <p className="text-sm text-muted-foreground">Loading register...</p>
       ) : students.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          No enrolled students in this class.
+          {showAllClasses
+            ? "No enrolled students found."
+            : "No enrolled students in this class."}
         </p>
       ) : (
         <div className="overflow-auto rounded-xl border">
           <table className="min-w-max w-full border-collapse text-xs">
             <thead>
               <tr className="bg-muted/50">
-                <th className="sticky left-0 z-10 bg-muted px-3 py-2 text-left font-medium">
+                {showAllClasses ? (
+                  <th className="sticky left-0 z-10 bg-muted px-3 py-2 text-left font-medium">
+                    Class
+                  </th>
+                ) : null}
+                <th
+                  className={cn(
+                    "sticky z-10 bg-muted px-3 py-2 text-left font-medium",
+                    showAllClasses ? "left-28" : "left-0",
+                  )}
+                >
                   Roll
                 </th>
-                <th className="sticky left-14 z-10 bg-muted px-3 py-2 text-left font-medium">
+                <th
+                  className={cn(
+                    "sticky z-10 bg-muted px-3 py-2 text-left font-medium",
+                    showAllClasses ? "left-40" : "left-14",
+                  )}
+                >
                   Student
                 </th>
                 {days.map((day) => (
@@ -287,10 +332,25 @@ export default function StudentAttendancePage() {
                 const id = str(s.studentProfileId);
                 return (
                   <tr key={id} className="border-t">
-                    <td className="sticky left-0 z-10 bg-background px-3 py-1">
+                    {showAllClasses ? (
+                      <td className="sticky left-0 z-10 bg-background px-3 py-1 whitespace-nowrap">
+                        {classLabel(s)}
+                      </td>
+                    ) : null}
+                    <td
+                      className={cn(
+                        "sticky z-10 bg-background px-3 py-1",
+                        showAllClasses ? "left-28" : "left-0",
+                      )}
+                    >
                       {str(s.rollNumber) || "—"}
                     </td>
-                    <td className="sticky left-14 z-10 bg-background px-3 py-1 font-medium whitespace-nowrap">
+                    <td
+                      className={cn(
+                        "sticky z-10 bg-background px-3 py-1 font-medium whitespace-nowrap",
+                        showAllClasses ? "left-40" : "left-14",
+                      )}
+                    >
                       {str(s.name)}
                     </td>
                     {days.map((day) => {

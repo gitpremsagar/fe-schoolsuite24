@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/table";
 import { schoolApi } from "@/lib/api/school";
 import { errorMessage, isSubscriptionInactive } from "@/lib/api/subscription";
+import { formatClassLabel } from "@/lib/class-levels";
 
 type Row = Record<string, unknown>;
 
@@ -120,7 +121,10 @@ export default function TeacherOverviewPage() {
                     return (
                       <TableRow key={str(c.id)}>
                         <TableCell className="font-medium">
-                          {str(c.name)}
+                          {formatClassLabel(
+                            str(c.classLevel) || str(c.name),
+                            str(c.section) || null,
+                          )}
                         </TableCell>
                         <TableCell>{str(c.section) || "—"}</TableCell>
                         <TableCell>{str(year.name) || "—"}</TableCell>

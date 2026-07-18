@@ -33,10 +33,24 @@ export const schoolApi = {
       apiFetch(`/classes/${id}/teachers`, { method: "POST", body }),
   },
   students: {
-    list: () =>
-      apiFetch<{ students: Array<Record<string, unknown>> }>("/students"),
+    list: (opts?: { academicYearId?: string; all?: boolean }) => {
+      const params = new URLSearchParams();
+      if (opts?.all) params.set("all", "1");
+      else if (opts?.academicYearId) {
+        params.set("academicYearId", opts.academicYearId);
+      }
+      const qs = params.toString();
+      return apiFetch<{
+        students: Array<Record<string, unknown>>;
+        academicYearId: string | null;
+      }>(`/students${qs ? `?${qs}` : ""}`);
+    },
+    get: (id: string) =>
+      apiFetch<{ student: Record<string, unknown> }>(`/students/${id}`),
     create: (body: Record<string, unknown>) =>
       apiFetch("/students", { method: "POST", body }),
+    update: (id: string, body: Record<string, unknown>) =>
+      apiFetch(`/students/${id}`, { method: "PATCH", body }),
     enroll: (id: string, body: Record<string, unknown>) =>
       apiFetch(`/students/${id}/enrollments`, { method: "POST", body }),
     me: () => apiFetch<{ student: Record<string, unknown> }>("/students/me"),
@@ -53,6 +67,25 @@ export const schoolApi = {
   billing: {
     summary: () => apiFetch<Record<string, unknown>>("/billing/summary"),
   },
+  fees: {
+    register: (academicYearId?: string) => {
+      const qs = academicYearId
+        ? `?academicYearId=${encodeURIComponent(academicYearId)}`
+        : "";
+      return apiFetch<{
+        academicYear: Record<string, unknown>;
+        months: Array<{
+          year: number;
+          month: number;
+          key: string;
+          label: string;
+        }>;
+        students: Array<Record<string, unknown>>;
+      }>(`/fees/register${qs}`);
+    },
+    upsertPayment: (body: Record<string, unknown>) =>
+      apiFetch("/fees/payments", { method: "PUT", body }),
+  },
 };
 
 export const attendanceApi = {
@@ -60,16 +93,21 @@ export const attendanceApi = {
     apiFetch<Record<string, unknown>>(
       `/attendance/students?classId=${classId}&date=${encodeURIComponent(date)}`,
     ),
-  classMonth: (classId: string, year: number, month: number) =>
-    apiFetch<{
+  classMonth: (classId: string | null | undefined, year: number, month: number) => {
+    const params = new URLSearchParams({
+      year: String(year),
+      month: String(month),
+    });
+    if (classId) params.set("classId", classId);
+    return apiFetch<{
       year: number;
       month: number;
       daysInMonth: number;
       days: number[];
+      classId: string | null;
       students: Array<Record<string, unknown>>;
-    }>(
-      `/attendance/students/month?classId=${classId}&year=${year}&month=${month}`,
-    ),
+    }>(`/attendance/students/month?${params.toString()}`);
+  },
   saveStudentAttendance: (body: Record<string, unknown>) =>
     apiFetch("/attendance/students", { method: "POST", body }),
   saveStudentMonth: (body: Record<string, unknown>) =>
@@ -101,4 +139,6 @@ export const attendanceApi = {
       days: number[];
       staff: Array<Record<string, unknown>>;
     }>(`/attendance/staff/month?year=${year}&month=${month}`),
+  saveStaffMonth: (body: Record<string, unknown>) =>
+    apiFetch("/attendance/staff/month", { method: "POST", body }),
 };

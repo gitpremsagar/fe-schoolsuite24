@@ -2,8 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { Pencil } from "lucide-react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,14 +21,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { schoolApi } from "@/lib/api/school";
 import { errorMessage, isSubscriptionInactive } from "@/lib/api/subscription";
 import { formatClassLabel } from "@/lib/class-levels";
@@ -46,17 +37,27 @@ function arr(v: unknown): Row[] {
   return Array.isArray(v) ? (v as Row[]) : [];
 }
 
-export default function StudentsPage() {
+function toDateInput(v: unknown): string {
+  if (v == null || v === "") return "";
+  const d = new Date(String(v));
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toISOString().slice(0, 10);
+}
+
+export default function EditStudentPage() {
   const router = useRouter();
-  const [students, setStudents] = useState<Row[]>([]);
+  const params = useParams();
+  const searchParams = useSearchParams();
+  const studentId = str(params.id);
+  const yearQuery = searchParams.get("year") ?? "";
+
   const [years, setYears] = useState<Row[]>([]);
   const [classes, setClasses] = useState<Row[]>([]);
-  const [filterYearId, setFilterYearId] = useState("");
+  const [studentEnrollments, setStudentEnrollments] = useState<Row[]>([]);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
-
-  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const [form, setForm] = useState({
     name: "",
@@ -76,7 +77,6 @@ export default function StudentsPage() {
     academicYearId: "",
     classId: "",
   });
-  const [saving, setSaving] = useState(false);
 
   const handleErr = useCallback(
     (err: unknown, fallback: string) => {
@@ -89,122 +89,122 @@ export default function StudentsPage() {
     [router],
   );
 
-  const loadMeta = useCallback(async () => {
-    try {
-      const [yr, cl] = await Promise.all([
-        schoolApi.academicYears.list(),
-        schoolApi.classes.list(),
-      ]);
-      setYears(yr.academicYears);
-      setClasses(cl.classes);
-      const current = yr.academicYears.find((y) => y.isCurrent);
-      const currentId = current ? str(current.id) : str(yr.academicYears[0]?.id);
-      setFilterYearId((prev) => prev || currentId);
-      if (currentId) {
-        setForm((p) => ({
-          ...p,
-          academicYearId: p.academicYearId || currentId,
-        }));
+  useEffect(() => {
+    if (!studentId) return;
+    let active = true;
+    (async () => {
+      setLoading(true);
+      setError("");
+      try {
+        const [yr, cl, st] = await Promise.all([
+          schoolApi.academicYears.list(),
+          schoolApi.classes.list(),
+          schoolApi.students.get(studentId),
+        ]);
+        if (!active) return;
+
+        setYears(yr.academicYears);
+        setClasses(cl.classes);
+
+        const student = st.student;
+        const user = obj(student.user);
+        const enrollments = arr(student.enrollments);
+        const currentYear =
+          yr.academicYears.find((y) => y.isCurrent) ?? yr.academicYears[0];
+        const preferredYearId =
+          (yearQuery &&
+          yr.academicYears.some((y) => str(y.id) === yearQuery)
+            ? yearQuery
+            : "") ||
+          str(enrollments[0]?.academicYearId) ||
+          str(currentYear?.id);
+
+        const enrollmentForYear =
+          enrollments.find(
+            (e) => str(e.academicYearId) === preferredYearId,
+          ) ?? null;
+
+        setForm({
+          name: str(user.name),
+          email: str(user.email),
+          password: "",
+          phone: str(user.phone),
+          admissionNumber: str(student.admissionNumber),
+          rollNumber: str(
+            enrollmentForYear?.rollNumber ?? student.rollNumber,
+          ),
+          fatherName: str(student.fatherName),
+          motherName: str(student.motherName),
+          permanentAddress: str(student.permanentAddress),
+          currentAddress: str(student.currentAddress),
+          bloodGroup: str(student.bloodGroup),
+          joiningDate: toDateInput(student.joiningDate ?? student.joinedOn),
+          leavingDate: toDateInput(student.leavingDate),
+          isCurrentlyStudying:
+            student.isCurrentlyStudying === undefined
+              ? true
+              : Boolean(student.isCurrentlyStudying),
+          academicYearId: preferredYearId,
+          classId: str(enrollmentForYear?.classId),
+        });
+        setStudentEnrollments(enrollments);
+      } catch (err) {
+        handleErr(err, "Failed to load student");
+      } finally {
+        if (active) setLoading(false);
       }
-    } catch (err) {
-      handleErr(err, "Failed to load students");
-    }
-  }, [handleErr]);
+    })();
+    return () => {
+      active = false;
+    };
+  }, [studentId, yearQuery, handleErr]);
 
-  const loadStudents = useCallback(async () => {
-    if (!filterYearId) return;
-    setLoading(true);
-    setError("");
-    try {
-      const st = await schoolApi.students.list({
-        academicYearId: filterYearId,
-      });
-      setStudents(st.students);
-    } catch (err) {
-      handleErr(err, "Failed to load students");
-    } finally {
-      setLoading(false);
-    }
-  }, [filterYearId, handleErr]);
-
-  useEffect(() => {
-    void loadMeta();
-  }, [loadMeta]);
-
-  useEffect(() => {
-    void loadStudents();
-  }, [loadStudents]);
-
-  const classesForCreate = useMemo(
+  const classesForYear = useMemo(
     () =>
       classes.filter(
         (c) =>
-          !form.academicYearId || str(c.academicYearId) === form.academicYearId,
+          !form.academicYearId ||
+          str(c.academicYearId) === form.academicYearId,
       ),
     [classes, form.academicYearId],
   );
 
-  const selectedYearName = useMemo(() => {
-    const y = years.find((row) => str(row.id) === filterYearId);
-    return y ? str(y.name) : "";
-  }, [years, filterYearId]);
-
-  async function refresh() {
-    await Promise.all([loadMeta(), loadStudents()]);
-  }
-
-  async function onCreate(e: React.FormEvent) {
+  async function onSave(e: React.FormEvent) {
     e.preventDefault();
+    if (!studentId) return;
     setSaving(true);
     setError("");
     setMessage("");
     try {
-      await schoolApi.students.create({
+      const body: Record<string, unknown> = {
         name: form.name,
         email: form.email,
-        password: form.password,
+        phone: form.phone || null,
         admissionNumber: form.admissionNumber,
+        rollNumber: form.rollNumber || null,
         fatherName: form.fatherName,
         motherName: form.motherName,
-        ...(form.phone ? { phone: form.phone } : {}),
-        ...(form.rollNumber ? { rollNumber: form.rollNumber } : {}),
-        ...(form.permanentAddress
-          ? { permanentAddress: form.permanentAddress }
-          : {}),
-        ...(form.currentAddress ? { currentAddress: form.currentAddress } : {}),
-        ...(form.bloodGroup ? { bloodGroup: form.bloodGroup } : {}),
-        ...(form.joiningDate ? { joiningDate: form.joiningDate } : {}),
+        permanentAddress: form.permanentAddress || null,
+        currentAddress: form.currentAddress || null,
+        bloodGroup: form.bloodGroup || null,
+        joiningDate: form.joiningDate || null,
         isCurrentlyStudying: form.isCurrentlyStudying,
-        ...(!form.isCurrentlyStudying && form.leavingDate
-          ? { leavingDate: form.leavingDate }
-          : {}),
-        ...(form.classId && form.academicYearId
-          ? { classId: form.classId, academicYearId: form.academicYearId }
-          : {}),
-      });
-      setMessage("Student created.");
-      setForm((p) => ({
-        ...p,
-        name: "",
-        email: "",
-        password: "",
-        phone: "",
-        admissionNumber: "",
-        rollNumber: "",
-        fatherName: "",
-        motherName: "",
-        permanentAddress: "",
-        currentAddress: "",
-        bloodGroup: "",
-        joiningDate: "",
-        leavingDate: "",
-        isCurrentlyStudying: true,
-        classId: "",
-      }));
-      setShowCreateForm(false);
-      await refresh();
+        leavingDate: form.isCurrentlyStudying
+          ? null
+          : form.leavingDate || null,
+      };
+      if (form.password.trim()) {
+        body.password = form.password;
+      }
+      if (form.academicYearId && form.classId) {
+        body.academicYearId = form.academicYearId;
+        body.classId = form.classId;
+      }
+      await schoolApi.students.update(studentId, body);
+      setMessage("Student updated.");
+      router.push("/dashboard/school/students");
     } catch (err) {
-      handleErr(err, "Failed to create student");
+      handleErr(err, "Failed to update student");
     } finally {
       setSaving(false);
     }
@@ -215,51 +215,31 @@ export default function StudentsPage() {
       <div className="space-y-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-semibold">Students</h1>
+            <h1 className="text-2xl font-semibold">Edit student</h1>
             <p className="text-sm text-muted-foreground">
-              Create student accounts and manage class enrollment.
+              Update profile details and class enrollment.
             </p>
           </div>
-          <div className="flex flex-wrap items-end gap-2">
-            <div className="space-y-1">
-              <Label>Academic year</Label>
-              <Select value={filterYearId} onValueChange={setFilterYearId}>
-                <SelectTrigger className="w-48">
-                  <SelectValue placeholder="Select year" />
-                </SelectTrigger>
-                <SelectContent>
-                  {years.map((y) => (
-                    <SelectItem key={str(y.id)} value={str(y.id)}>
-                      {str(y.name)}
-                      {y.isCurrent ? " (current)" : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <Button
-              type="button"
-              variant={showCreateForm ? "outline" : "default"}
-              onClick={() => setShowCreateForm((v) => !v)}
-            >
-              {showCreateForm ? "Cancel" : "Add student"}
-            </Button>
-          </div>
+          <Button type="button" variant="outline" asChild>
+            <Link href="/dashboard/school/students">Back to students</Link>
+          </Button>
         </div>
 
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
         {message ? <p className="text-sm text-green-600">{message}</p> : null}
 
-        {showCreateForm ? (
+        {loading ? (
+          <p className="text-sm text-muted-foreground">Loading student...</p>
+        ) : (
           <Card>
             <CardHeader>
-              <CardTitle>New student</CardTitle>
+              <CardTitle>{form.name || "Student"}</CardTitle>
               <CardDescription>
-                Optionally enroll into a class right away.
+                Leave password blank to keep the current password.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <form className="grid gap-4 md:grid-cols-2" onSubmit={onCreate}>
+              <form className="grid gap-4 md:grid-cols-2" onSubmit={onSave}>
                 <div className="space-y-1">
                   <Label>Name</Label>
                   <Input
@@ -282,7 +262,7 @@ export default function StudentsPage() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label>Password</Label>
+                  <Label>New password</Label>
                   <Input
                     type="password"
                     minLength={8}
@@ -290,7 +270,7 @@ export default function StudentsPage() {
                     onChange={(e) =>
                       setForm((p) => ({ ...p, password: e.target.value }))
                     }
-                    required
+                    placeholder="Optional"
                   />
                 </div>
                 <div className="space-y-1">
@@ -344,7 +324,7 @@ export default function StudentsPage() {
                     required
                   />
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-1 md:col-span-2">
                   <Label>Permanent address</Label>
                   <Input
                     value={form.permanentAddress}
@@ -356,7 +336,7 @@ export default function StudentsPage() {
                     }
                   />
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-1 md:col-span-2">
                   <Label>Current address</Label>
                   <Input
                     value={form.currentAddress}
@@ -422,16 +402,22 @@ export default function StudentsPage() {
                   </div>
                 ) : null}
                 <div className="space-y-1">
-                  <Label>Academic year (optional)</Label>
+                  <Label>Academic year</Label>
                   <Select
                     value={form.academicYearId}
-                    onValueChange={(v) =>
+                    onValueChange={(v) => {
+                      const enrollment = studentEnrollments.find(
+                        (e) => str(e.academicYearId) === v,
+                      );
                       setForm((p) => ({
                         ...p,
                         academicYearId: v,
-                        classId: "",
-                      }))
-                    }
+                        classId: str(enrollment?.classId),
+                        rollNumber: str(
+                          enrollment?.rollNumber ?? p.rollNumber,
+                        ),
+                      }));
+                    }}
                   >
                     <SelectTrigger className="w-full">
                       <SelectValue placeholder="Select year" />
@@ -440,13 +426,14 @@ export default function StudentsPage() {
                       {years.map((y) => (
                         <SelectItem key={str(y.id)} value={str(y.id)}>
                           {str(y.name)}
+                          {y.isCurrent ? " (current)" : ""}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-1">
-                  <Label>Class (optional)</Label>
+                  <Label>Class</Label>
                   <Select
                     value={form.classId}
                     onValueChange={(v) =>
@@ -457,7 +444,7 @@ export default function StudentsPage() {
                       <SelectValue placeholder="Select class" />
                     </SelectTrigger>
                     <SelectContent>
-                      {classesForCreate.map((c) => (
+                      {classesForYear.map((c) => (
                         <SelectItem key={str(c.id)} value={str(c.id)}>
                           {formatClassLabel(
                             str(c.classLevel) || str(c.name),
@@ -468,84 +455,18 @@ export default function StudentsPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="md:col-span-2">
+                <div className="flex flex-wrap gap-2 md:col-span-2">
                   <Button type="submit" disabled={saving}>
-                    {saving ? "Creating..." : "Create student"}
+                    {saving ? "Saving..." : "Save changes"}
+                  </Button>
+                  <Button type="button" variant="outline" asChild>
+                    <Link href="/dashboard/school/students">Cancel</Link>
                   </Button>
                 </div>
               </form>
             </CardContent>
           </Card>
-        ) : null}
-
-        <Card>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Admission #</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Class</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-muted-foreground">
-                      Loading...
-                    </TableCell>
-                  </TableRow>
-                ) : students.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-muted-foreground">
-                      {selectedYearName
-                        ? `No students enrolled for ${selectedYearName}.`
-                        : "No students yet."}
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  students.map((s) => {
-                    const user = obj(s.user);
-                    const enrollments = arr(s.enrollments);
-                    const current = enrollments[0];
-                    const klass = current ? obj(current.class) : {};
-                    const editHref = filterYearId
-                      ? `/dashboard/school/students/${str(s.id)}?year=${encodeURIComponent(filterYearId)}`
-                      : `/dashboard/school/students/${str(s.id)}`;
-                    return (
-                      <TableRow key={str(s.id)}>
-                        <TableCell className="font-medium">
-                          <span className="inline-flex items-center gap-1.5">
-                            <Link
-                              href={editHref}
-                              className="inline-flex rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                              title="Edit student"
-                              aria-label={`Edit ${str(user.name)}`}
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Link>
-                            {str(user.name)}
-                          </span>
-                        </TableCell>
-                        <TableCell>{str(s.admissionNumber)}</TableCell>
-                        <TableCell>{str(user.email)}</TableCell>
-                        <TableCell>
-                          {klass.classLevel || klass.name
-                            ? formatClassLabel(
-                                str(klass.classLevel || klass.name),
-                                str(klass.section) || null,
-                              )
-                            : "—"}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+        )}
       </div>
     </DashboardShell>
   );

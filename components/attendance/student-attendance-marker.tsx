@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/table";
 import { attendanceApi } from "@/lib/api/school";
 import { errorMessage, isSubscriptionInactive } from "@/lib/api/subscription";
+import { formatClassLabel } from "@/lib/class-levels";
 
 type Row = Record<string, unknown>;
 
@@ -140,8 +141,10 @@ export function StudentAttendanceMarker({ classes }: { classes: Row[] }) {
             <SelectContent>
               {classes.map((c) => (
                 <SelectItem key={str(c.id)} value={str(c.id)}>
-                  {str(c.name)}
-                  {c.section ? ` - ${str(c.section)}` : ""}
+                  {formatClassLabel(
+                    str(c.classLevel) || str(c.name),
+                    str(c.section) || null,
+                  )}
                 </SelectItem>
               ))}
             </SelectContent>

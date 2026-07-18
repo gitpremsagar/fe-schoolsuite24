@@ -59,6 +59,11 @@ export default function StaffPage() {
     designation: "",
     department: "",
     joiningDate: "",
+    leavingDate: "",
+    isCurrentlyWorking: true,
+    monthlySalary: "",
+    expectedPunchInTime: "",
+    expectedPunchOutTime: "",
   });
   const [saving, setSaving] = useState(false);
 
@@ -111,6 +116,19 @@ export default function StaffPage() {
         ...(form.designation ? { designation: form.designation } : {}),
         ...(form.department ? { department: form.department } : {}),
         ...(form.joiningDate ? { joiningDate: form.joiningDate } : {}),
+        isCurrentlyWorking: form.isCurrentlyWorking,
+        ...(!form.isCurrentlyWorking && form.leavingDate
+          ? { leavingDate: form.leavingDate }
+          : {}),
+        ...(form.monthlySalary.trim()
+          ? { monthlySalary: Number(form.monthlySalary) }
+          : {}),
+        ...(form.expectedPunchInTime
+          ? { expectedPunchInTime: form.expectedPunchInTime }
+          : {}),
+        ...(form.expectedPunchOutTime
+          ? { expectedPunchOutTime: form.expectedPunchOutTime }
+          : {}),
       });
       setMessage("Staff member created.");
       setForm((p) => ({
@@ -123,6 +141,11 @@ export default function StaffPage() {
         designation: "",
         department: "",
         joiningDate: "",
+        leavingDate: "",
+        isCurrentlyWorking: true,
+        monthlySalary: "",
+        expectedPunchInTime: "",
+        expectedPunchOutTime: "",
       }));
       setShowForm(false);
       await load(filter);
@@ -259,6 +282,77 @@ export default function StaffPage() {
                     value={form.joiningDate}
                     onChange={(e) =>
                       setForm((p) => ({ ...p, joiningDate: e.target.value }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Status</Label>
+                  <Select
+                    value={form.isCurrentlyWorking ? "working" : "left"}
+                    onValueChange={(v) =>
+                      setForm((p) => ({
+                        ...p,
+                        isCurrentlyWorking: v === "working",
+                        leavingDate: v === "working" ? "" : p.leavingDate,
+                      }))
+                    }
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="working">Currently working</SelectItem>
+                      <SelectItem value="left">Left school</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {!form.isCurrentlyWorking ? (
+                  <div className="space-y-1">
+                    <Label>Leaving date</Label>
+                    <Input
+                      type="date"
+                      value={form.leavingDate}
+                      onChange={(e) =>
+                        setForm((p) => ({ ...p, leavingDate: e.target.value }))
+                      }
+                    />
+                  </div>
+                ) : null}
+                <div className="space-y-1">
+                  <Label>Monthly salary</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={form.monthlySalary}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, monthlySalary: e.target.value }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Punch-in time</Label>
+                  <Input
+                    type="time"
+                    value={form.expectedPunchInTime}
+                    onChange={(e) =>
+                      setForm((p) => ({
+                        ...p,
+                        expectedPunchInTime: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Punch-out time</Label>
+                  <Input
+                    type="time"
+                    value={form.expectedPunchOutTime}
+                    onChange={(e) =>
+                      setForm((p) => ({
+                        ...p,
+                        expectedPunchOutTime: e.target.value,
+                      }))
                     }
                   />
                 </div>
