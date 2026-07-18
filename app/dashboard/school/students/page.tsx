@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Pencil } from "lucide-react";
@@ -33,6 +33,10 @@ import {
 import { schoolApi } from "@/lib/api/school";
 import { errorMessage, isSubscriptionInactive } from "@/lib/api/subscription";
 import { formatClassLabel } from "@/lib/class-levels";
+import {
+  downloadStudentImportTemplate,
+  parseStudentImportFile,
+} from "@/lib/student-import";
 
 type Row = Record<string, unknown>;
 
@@ -57,6 +61,14 @@ export default function StudentsPage() {
   const [loading, setLoading] = useState(true);
 
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState<{
+    total: number;
+    processed: number;
+    created: number;
+    failed: number;
+  } | null>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   const [form, setForm] = useState({
     name: "",
@@ -153,6 +165,75 @@ export default function StudentsPage() {
     await Promise.all([loadMeta(), loadStudents()]);
   }
 
+  async function onImportExcel(file: File) {
+    setImporting(true);
+    setError("");
+    setMessage("");
+    setImportProgress(null);
+    try {
+      const rows = await parseStudentImportFile(file);
+      const total = rows.length;
+      const batchSize = 10;
+      let created = 0;
+      const allFailed: Array<{
+        row: number;
+        email?: string;
+        error: string;
+      }> = [];
+
+      setImportProgress({
+        total,
+        processed: 0,
+        created: 0,
+        failed: 0,
+      });
+
+      for (let start = 0; start < total; start += batchSize) {
+        const batch = rows.slice(start, start + batchSize);
+        const rowOffset = start + 2; // Excel header is row 1
+        const result = await schoolApi.students.bulkCreate(
+          batch as Array<Record<string, unknown>>,
+          { rowOffset },
+        );
+        created += result.created;
+        allFailed.push(...result.failed);
+        setImportProgress({
+          total,
+          processed: Math.min(start + batch.length, total),
+          created,
+          failed: allFailed.length,
+        });
+      }
+
+      const failParts = allFailed.slice(0, 5).map((f) => {
+        const who = f.email ? ` (${f.email})` : "";
+        return `Row ${f.row}${who}: ${f.error}`;
+      });
+      const more =
+        allFailed.length > 5
+          ? ` …and ${allFailed.length - 5} more.`
+          : "";
+      setMessage(
+        `Imported ${created} student(s).` +
+          (allFailed.length
+            ? ` ${allFailed.length} failed. ${failParts.join("; ")}${more}`
+            : ""),
+      );
+      if (allFailed.length && created === 0) {
+        setError("No students were imported. Check the errors above.");
+      }
+      await refresh();
+    } catch (err) {
+      handleErr(err, "Failed to import students");
+    } finally {
+      setImporting(false);
+      setImportProgress(null);
+      if (importInputRef.current) {
+        importInputRef.current.value = "";
+      }
+    }
+  }
+
   async function onCreate(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
@@ -164,8 +245,8 @@ export default function StudentsPage() {
         email: form.email,
         password: form.password,
         admissionNumber: form.admissionNumber,
-        fatherName: form.fatherName,
-        motherName: form.motherName,
+        ...(form.fatherName ? { fatherName: form.fatherName } : {}),
+        ...(form.motherName ? { motherName: form.motherName } : {}),
         ...(form.phone ? { phone: form.phone } : {}),
         ...(form.rollNumber ? { rollNumber: form.rollNumber } : {}),
         ...(form.permanentAddress
@@ -239,13 +320,65 @@ export default function StudentsPage() {
             </div>
             <Button
               type="button"
+              variant="outline"
+              disabled={importing}
+              onClick={() => downloadStudentImportTemplate()}
+            >
+              Download sample Excel
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={importing}
+              onClick={() => importInputRef.current?.click()}
+            >
+              {importing ? "Importing..." : "Import Excel"}
+            </Button>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void onImportExcel(file);
+              }}
+            />
+            <Button
+              type="button"
               variant={showCreateForm ? "outline" : "default"}
+              disabled={importing}
               onClick={() => setShowCreateForm((v) => !v)}
             >
               {showCreateForm ? "Cancel" : "Add student"}
             </Button>
           </div>
         </div>
+
+        {importProgress ? (
+          <div className="space-y-2 rounded-md border p-3">
+            <p className="text-sm">
+              Importing {importProgress.processed}/{importProgress.total}
+              … ({importProgress.created} created, {importProgress.failed}{" "}
+              failed)
+            </p>
+            <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full bg-primary transition-[width] duration-300"
+                style={{
+                  width: `${
+                    importProgress.total === 0
+                      ? 0
+                      : Math.round(
+                          (importProgress.processed / importProgress.total) *
+                            100,
+                        )
+                  }%`,
+                }}
+              />
+            </div>
+          </div>
+        ) : null}
 
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
         {message ? <p className="text-sm text-green-600">{message}</p> : null}
@@ -261,7 +394,9 @@ export default function StudentsPage() {
             <CardContent>
               <form className="grid gap-4 md:grid-cols-2" onSubmit={onCreate}>
                 <div className="space-y-1">
-                  <Label>Name</Label>
+                  <Label>
+                    Name <span className="text-destructive">*</span>
+                  </Label>
                   <Input
                     value={form.name}
                     onChange={(e) =>
@@ -271,7 +406,9 @@ export default function StudentsPage() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label>Email</Label>
+                  <Label>
+                    Email <span className="text-destructive">*</span>
+                  </Label>
                   <Input
                     type="email"
                     value={form.email}
@@ -282,7 +419,9 @@ export default function StudentsPage() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label>Password</Label>
+                  <Label>
+                    Password <span className="text-destructive">*</span>
+                  </Label>
                   <Input
                     type="password"
                     minLength={8}
@@ -303,7 +442,9 @@ export default function StudentsPage() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label>Admission number</Label>
+                  <Label>
+                    Admission number <span className="text-destructive">*</span>
+                  </Label>
                   <Input
                     value={form.admissionNumber}
                     onChange={(e) =>
@@ -331,7 +472,6 @@ export default function StudentsPage() {
                     onChange={(e) =>
                       setForm((p) => ({ ...p, fatherName: e.target.value }))
                     }
-                    required
                   />
                 </div>
                 <div className="space-y-1">
@@ -341,7 +481,6 @@ export default function StudentsPage() {
                     onChange={(e) =>
                       setForm((p) => ({ ...p, motherName: e.target.value }))
                     }
-                    required
                   />
                 </div>
                 <div className="space-y-1">

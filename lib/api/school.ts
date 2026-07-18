@@ -49,6 +49,22 @@ export const schoolApi = {
       apiFetch<{ student: Record<string, unknown> }>(`/students/${id}`),
     create: (body: Record<string, unknown>) =>
       apiFetch("/students", { method: "POST", body }),
+    bulkCreate: (
+      students: Array<Record<string, unknown>>,
+      opts?: { rowOffset?: number },
+    ) =>
+      apiFetch<{
+        created: number;
+        failed: Array<{ row: number; email?: string; error: string }>;
+      }>("/students/bulk", {
+        method: "POST",
+        body: {
+          students,
+          ...(opts?.rowOffset !== undefined
+            ? { rowOffset: opts.rowOffset }
+            : {}),
+        },
+      }),
     update: (id: string, body: Record<string, unknown>) =>
       apiFetch(`/students/${id}`, { method: "PATCH", body }),
     enroll: (id: string, body: Record<string, unknown>) =>

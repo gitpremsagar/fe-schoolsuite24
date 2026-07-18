@@ -182,8 +182,8 @@ export default function EditStudentPage() {
         phone: form.phone || null,
         admissionNumber: form.admissionNumber,
         rollNumber: form.rollNumber || null,
-        fatherName: form.fatherName,
-        motherName: form.motherName,
+        fatherName: form.fatherName || null,
+        motherName: form.motherName || null,
         permanentAddress: form.permanentAddress || null,
         currentAddress: form.currentAddress || null,
         bloodGroup: form.bloodGroup || null,
@@ -241,7 +241,9 @@ export default function EditStudentPage() {
             <CardContent>
               <form className="grid gap-4 md:grid-cols-2" onSubmit={onSave}>
                 <div className="space-y-1">
-                  <Label>Name</Label>
+                  <Label>
+                    Name <span className="text-destructive">*</span>
+                  </Label>
                   <Input
                     value={form.name}
                     onChange={(e) =>
@@ -251,7 +253,9 @@ export default function EditStudentPage() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label>Email</Label>
+                  <Label>
+                    Email <span className="text-destructive">*</span>
+                  </Label>
                   <Input
                     type="email"
                     value={form.email}
@@ -283,7 +287,9 @@ export default function EditStudentPage() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label>Admission number</Label>
+                  <Label>
+                    Admission number <span className="text-destructive">*</span>
+                  </Label>
                   <Input
                     value={form.admissionNumber}
                     onChange={(e) =>
@@ -311,7 +317,6 @@ export default function EditStudentPage() {
                     onChange={(e) =>
                       setForm((p) => ({ ...p, fatherName: e.target.value }))
                     }
-                    required
                   />
                 </div>
                 <div className="space-y-1">
@@ -321,7 +326,6 @@ export default function EditStudentPage() {
                     onChange={(e) =>
                       setForm((p) => ({ ...p, motherName: e.target.value }))
                     }
-                    required
                   />
                 </div>
                 <div className="space-y-1 md:col-span-2">
