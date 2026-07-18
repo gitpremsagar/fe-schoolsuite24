@@ -649,9 +649,10 @@ export default function StudentsPage() {
                     const enrollments = arr(s.enrollments);
                     const current = enrollments[0];
                     const klass = current ? obj(current.class) : {};
+                    const detailHref = `/dashboard/school/students/${str(s.id)}`;
                     const editHref = filterYearId
-                      ? `/dashboard/school/students/${str(s.id)}?year=${encodeURIComponent(filterYearId)}`
-                      : `/dashboard/school/students/${str(s.id)}`;
+                      ? `/dashboard/school/students/${str(s.id)}/edit?year=${encodeURIComponent(filterYearId)}`
+                      : `/dashboard/school/students/${str(s.id)}/edit`;
                     return (
                       <TableRow key={str(s.id)}>
                         <TableCell className="font-medium">
@@ -664,7 +665,12 @@ export default function StudentsPage() {
                             >
                               <Pencil className="h-3.5 w-3.5" />
                             </Link>
-                            {str(user.name)}
+                            <Link
+                              href={detailHref}
+                              className="hover:underline"
+                            >
+                              {str(user.name)}
+                            </Link>
                           </span>
                         </TableCell>
                         <TableCell>{str(s.admissionNumber)}</TableCell>

@@ -1,9 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { Pencil } from "lucide-react";
+import { useParams, useRouter } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,17 +21,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { schoolApi } from "@/lib/api/school";
 import { errorMessage, isSubscriptionInactive } from "@/lib/api/subscription";
-import { formatClassLabel } from "@/lib/class-levels";
 
 type Row = Record<string, unknown>;
 
@@ -43,118 +33,24 @@ function obj(v: unknown): Row {
   return v && typeof v === "object" ? (v as Row) : {};
 }
 
-function StaffTable({
-  title,
-  description,
-  rows,
-  loading,
-  emptyLabel,
-}: {
-  title: string;
-  description: string;
-  rows: Row[];
-  loading: boolean;
-  emptyLabel: string;
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        <CardDescription>{description}</CardDescription>
-      </CardHeader>
-      <CardContent className="p-0">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Code</TableHead>
-              <TableHead>Email</TableHead>
-              <TableHead>Designation</TableHead>
-              <TableHead>Department</TableHead>
-              <TableHead>Classes</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              <TableRow>
-                <TableCell colSpan={6} className="text-muted-foreground">
-                  Loading...
-                </TableCell>
-              </TableRow>
-            ) : rows.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={6} className="text-muted-foreground">
-                  {emptyLabel}
-                </TableCell>
-              </TableRow>
-            ) : (
-              rows.map((s) => {
-                const user = obj(s.user);
-                const assignments = Array.isArray(s.classAssignments)
-                  ? (s.classAssignments as Row[])
-                  : [];
-                const classLabels = assignments
-                  .map((a) => {
-                    const klass = obj(a.class);
-                    return formatClassLabel(
-                      str(klass.classLevel) || str(klass.name),
-                      str(klass.section) || null,
-                    );
-                  })
-                  .filter((label) => label && label !== "—");
-                const detailHref = `/dashboard/school/staff/${str(s.id)}`;
-                const editHref = `/dashboard/school/staff/${str(s.id)}/edit`;
-                const inactive = user.isActive === false;
-                return (
-                  <TableRow
-                    key={str(s.id)}
-                    className={inactive ? "opacity-60" : undefined}
-                  >
-                    <TableCell className="font-medium">
-                      <span className="inline-flex items-center gap-1.5">
-                        <Link
-                          href={editHref}
-                          className="inline-flex rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                          title="Edit staff"
-                          aria-label={`Edit ${str(user.name)}`}
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Link>
-                        <Link href={detailHref} className="hover:underline">
-                          {str(user.name)}
-                        </Link>
-                        {inactive ? (
-                          <span className="text-xs text-muted-foreground">
-                            (inactive)
-                          </span>
-                        ) : null}
-                      </span>
-                    </TableCell>
-                    <TableCell>{str(s.employeeCode)}</TableCell>
-                    <TableCell>{str(user.email)}</TableCell>
-                    <TableCell>{str(s.designation) || "—"}</TableCell>
-                    <TableCell>{str(s.department) || "—"}</TableCell>
-                    <TableCell>
-                      {classLabels.length > 0 ? classLabels.join(", ") : "—"}
-                    </TableCell>
-                  </TableRow>
-                );
-              })
-            )}
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
-  );
+function toDateInput(v: unknown): string {
+  if (v == null || v === "") return "";
+  const d = new Date(String(v));
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toISOString().slice(0, 10);
 }
 
-export default function StaffPage() {
+export default function EditStaffPage() {
   const router = useRouter();
-  const [staff, setStaff] = useState<Row[]>([]);
+  const params = useParams();
+  const staffId = str(params.id);
+
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [isAdminAccount, setIsAdminAccount] = useState(false);
+  const [adminPassword, setAdminPassword] = useState("");
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -171,7 +67,6 @@ export default function StaffPage() {
     expectedPunchInTime: "",
     expectedPunchOutTime: "",
   });
-  const [saving, setSaving] = useState(false);
 
   const handleErr = useCallback(
     (err: unknown, fallback: string) => {
@@ -184,83 +79,100 @@ export default function StaffPage() {
     [router],
   );
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const res = await schoolApi.staff.list();
-      setStaff(res.staff);
-    } catch (err) {
-      handleErr(err, "Failed to load staff");
-    } finally {
-      setLoading(false);
-    }
-  }, [handleErr]);
-
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (!staffId) return;
+    let active = true;
+    (async () => {
+      setLoading(true);
+      setError("");
+      try {
+        const res = await schoolApi.staff.get(staffId);
+        if (!active) return;
+        const staff = res.staff;
+        const user = obj(staff.user);
+        const school = obj(staff.school);
+        setIsAdminAccount(
+          str(staff.staffType) === "ADMIN" ||
+            str(user.role) === "ADMIN" ||
+            str(user.role) === "SUPER_ADMIN" ||
+            (str(school.ownerId) !== "" &&
+              str(school.ownerId) === str(user.id)),
+        );
+        setAdminPassword("");
+        setForm({
+          name: str(user.name),
+          email: str(user.email),
+          password: "",
+          phone: str(user.phone),
+          staffType: str(staff.staffType) || "TEACHER",
+          employeeCode: str(staff.employeeCode),
+          designation: str(staff.designation),
+          department: str(staff.department),
+          joiningDate: toDateInput(staff.joiningDate),
+          leavingDate: toDateInput(staff.leavingDate),
+          isCurrentlyWorking:
+            staff.isCurrentlyWorking === undefined
+              ? true
+              : Boolean(staff.isCurrentlyWorking),
+          monthlySalary:
+            staff.monthlySalary == null ? "" : String(staff.monthlySalary),
+          expectedPunchInTime: str(staff.expectedPunchInTime),
+          expectedPunchOutTime: str(staff.expectedPunchOutTime),
+        });
+      } catch (err) {
+        handleErr(err, "Failed to load staff");
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [staffId, handleErr]);
 
-  const teachers = useMemo(
-    () => staff.filter((s) => str(s.staffType) === "TEACHER"),
-    [staff],
-  );
-  const otherStaff = useMemo(
-    () => staff.filter((s) => str(s.staffType) !== "TEACHER"),
-    [staff],
-  );
-
-  async function onCreate(e: React.FormEvent) {
+  async function onSave(e: React.FormEvent) {
     e.preventDefault();
+    if (!staffId) return;
+    if (isAdminAccount && !adminPassword.trim()) {
+      setError("Enter your admin password to edit this admin account.");
+      return;
+    }
     setSaving(true);
     setError("");
     setMessage("");
     try {
-      await schoolApi.staff.create({
+      const body: Record<string, unknown> = {
         name: form.name,
         email: form.email,
-        password: form.password,
-        staffType: form.staffType,
+        phone: form.phone || null,
         employeeCode: form.employeeCode,
-        ...(form.phone ? { phone: form.phone } : {}),
-        ...(form.designation ? { designation: form.designation } : {}),
-        ...(form.department ? { department: form.department } : {}),
-        ...(form.joiningDate ? { joiningDate: form.joiningDate } : {}),
+        designation: form.designation || null,
+        department: form.department || null,
+        joiningDate: form.joiningDate || null,
         isCurrentlyWorking: form.isCurrentlyWorking,
-        ...(!form.isCurrentlyWorking && form.leavingDate
-          ? { leavingDate: form.leavingDate }
-          : {}),
-        ...(form.monthlySalary.trim()
-          ? { monthlySalary: Number(form.monthlySalary) }
-          : {}),
-        ...(form.expectedPunchInTime
-          ? { expectedPunchInTime: form.expectedPunchInTime }
-          : {}),
-        ...(form.expectedPunchOutTime
-          ? { expectedPunchOutTime: form.expectedPunchOutTime }
-          : {}),
-      });
-      setMessage("Staff member created.");
-      setForm((p) => ({
-        ...p,
-        name: "",
-        email: "",
-        password: "",
-        phone: "",
-        employeeCode: "",
-        designation: "",
-        department: "",
-        joiningDate: "",
-        leavingDate: "",
-        isCurrentlyWorking: true,
-        monthlySalary: "",
-        expectedPunchInTime: "",
-        expectedPunchOutTime: "",
-      }));
-      setShowForm(false);
-      await load();
+        leavingDate: form.isCurrentlyWorking
+          ? null
+          : form.leavingDate || null,
+        monthlySalary: form.monthlySalary.trim()
+          ? Number(form.monthlySalary)
+          : null,
+        expectedPunchInTime: form.expectedPunchInTime || null,
+        expectedPunchOutTime: form.expectedPunchOutTime || null,
+      };
+      if (!isAdminAccount) {
+        body.staffType = form.staffType;
+      }
+      if (form.password.trim()) {
+        body.password = form.password;
+      }
+      if (isAdminAccount) {
+        body.adminPassword = adminPassword;
+      }
+      await schoolApi.staff.update(staffId, body);
+      setMessage("Staff updated.");
+      router.push(`/dashboard/school/staff/${staffId}`);
     } catch (err) {
-      handleErr(err, "Failed to create staff");
+      handleErr(err, "Failed to update staff");
     } finally {
       setSaving(false);
     }
@@ -271,35 +183,37 @@ export default function StaffPage() {
       <div className="space-y-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-semibold">Staff</h1>
+            <h1 className="text-2xl font-semibold">Edit staff</h1>
             <p className="text-sm text-muted-foreground">
-              Create teachers and employees for your school.
+              Update profile and employment details.
             </p>
           </div>
-          <Button
-            type="button"
-            variant={showForm ? "outline" : "default"}
-            onClick={() => setShowForm((v) => !v)}
-          >
-            {showForm ? "Cancel" : "Add staff"}
+          <Button type="button" variant="outline" asChild>
+            <Link href={`/dashboard/school/staff/${staffId}`}>
+              Back to staff member
+            </Link>
           </Button>
         </div>
 
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
         {message ? <p className="text-sm text-green-600">{message}</p> : null}
 
-        {showForm ? (
+        {loading ? (
+          <p className="text-sm text-muted-foreground">Loading staff...</p>
+        ) : (
           <Card>
             <CardHeader>
-              <CardTitle>New staff member</CardTitle>
+              <CardTitle>{form.name || "Staff"}</CardTitle>
               <CardDescription>
-                Teachers can mark attendance; employees can punch in/out.
+                Leave password blank to keep the current password.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <form className="grid gap-4 md:grid-cols-2" onSubmit={onCreate}>
+              <form className="grid gap-4 md:grid-cols-2" onSubmit={onSave}>
                 <div className="space-y-1">
-                  <Label>Name</Label>
+                  <Label>
+                    Name <span className="text-destructive">*</span>
+                  </Label>
                   <Input
                     value={form.name}
                     onChange={(e) =>
@@ -309,7 +223,9 @@ export default function StaffPage() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label>Email</Label>
+                  <Label>
+                    Email <span className="text-destructive">*</span>
+                  </Label>
                   <Input
                     type="email"
                     value={form.email}
@@ -320,7 +236,7 @@ export default function StaffPage() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label>Password</Label>
+                  <Label>New password</Label>
                   <Input
                     type="password"
                     minLength={8}
@@ -328,7 +244,7 @@ export default function StaffPage() {
                     onChange={(e) =>
                       setForm((p) => ({ ...p, password: e.target.value }))
                     }
-                    required
+                    placeholder="Optional"
                   />
                 </div>
                 <div className="space-y-1">
@@ -342,23 +258,29 @@ export default function StaffPage() {
                 </div>
                 <div className="space-y-1">
                   <Label>Staff type</Label>
-                  <Select
-                    value={form.staffType}
-                    onValueChange={(v) =>
-                      setForm((p) => ({ ...p, staffType: v }))
-                    }
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="TEACHER">Teacher</SelectItem>
-                      <SelectItem value="EMPLOYEE">Employee</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  {isAdminAccount ? (
+                    <Input value={form.staffType} disabled readOnly />
+                  ) : (
+                    <Select
+                      value={form.staffType}
+                      onValueChange={(v) =>
+                        setForm((p) => ({ ...p, staffType: v }))
+                      }
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="TEACHER">Teacher</SelectItem>
+                        <SelectItem value="EMPLOYEE">Employee</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
                 <div className="space-y-1">
-                  <Label>Employee code</Label>
+                  <Label>
+                    Employee code <span className="text-destructive">*</span>
+                  </Label>
                   <Input
                     value={form.employeeCode}
                     onChange={(e) =>
@@ -466,31 +388,39 @@ export default function StaffPage() {
                     }
                   />
                 </div>
-                <div className="flex items-end md:col-span-2">
+                {isAdminAccount ? (
+                  <div className="space-y-1 md:col-span-2">
+                    <Label>
+                      Your admin password{" "}
+                      <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      type="password"
+                      autoComplete="current-password"
+                      value={adminPassword}
+                      onChange={(e) => setAdminPassword(e.target.value)}
+                      required
+                      placeholder="Required to save changes to an admin account"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Editing an admin account requires your own admin password.
+                    </p>
+                  </div>
+                ) : null}
+                <div className="flex flex-wrap gap-2 md:col-span-2">
                   <Button type="submit" disabled={saving}>
-                    {saving ? "Creating..." : "Create staff"}
+                    {saving ? "Saving..." : "Save changes"}
+                  </Button>
+                  <Button type="button" variant="outline" asChild>
+                    <Link href={`/dashboard/school/staff/${staffId}`}>
+                      Cancel
+                    </Link>
                   </Button>
                 </div>
               </form>
             </CardContent>
           </Card>
-        ) : null}
-
-        <StaffTable
-          title="Teachers"
-          description="Teaching staff who can mark class attendance."
-          rows={teachers}
-          loading={loading}
-          emptyLabel="No teachers yet."
-        />
-
-        <StaffTable
-          title="Other staff"
-          description="Employees and non-teaching staff."
-          rows={otherStaff}
-          loading={loading}
-          emptyLabel="No other staff yet."
-        />
+        )}
       </div>
     </DashboardShell>
   );

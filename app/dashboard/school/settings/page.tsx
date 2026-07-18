@@ -43,6 +43,7 @@ export default function SettingsPage() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [adminPassword, setAdminPassword] = useState("");
 
   const handleErr = useCallback(
     (err: unknown, fallback: string) => {
@@ -80,6 +81,10 @@ export default function SettingsPage() {
 
   async function onSave(e: React.FormEvent) {
     e.preventDefault();
+    if (!adminPassword.trim()) {
+      setError("Enter your admin password to save settings.");
+      return;
+    }
     setSaving(true);
     setError("");
     setMessage("");
@@ -87,8 +92,10 @@ export default function SettingsPage() {
       const body: Record<string, unknown> = {};
       for (const f of FIELDS) body[f.key] = form[f.key] ?? "";
       body.establishedYear = establishedYear ? Number(establishedYear) : null;
+      body.adminPassword = adminPassword;
       await schoolApi.updateMe(body);
       setMessage("School profile updated.");
+      setAdminPassword("");
     } catch (err) {
       handleErr(err, "Failed to update school");
     } finally {
@@ -136,6 +143,20 @@ export default function SettingsPage() {
                     type="number"
                     value={establishedYear}
                     onChange={(e) => setEstablishedYear(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1 md:col-span-2">
+                  <Label>
+                    Your admin password{" "}
+                    <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    type="password"
+                    autoComplete="current-password"
+                    value={adminPassword}
+                    onChange={(e) => setAdminPassword(e.target.value)}
+                    required
+                    placeholder="Required to save settings"
                   />
                 </div>
                 <div className="md:col-span-2">

@@ -43,11 +43,24 @@ function num(v: unknown): number {
 function obj(v: unknown): Row {
   return v && typeof v === "object" ? (v as Row) : {};
 }
+function arr(v: unknown): Row[] {
+  return Array.isArray(v) ? (v as Row[]) : [];
+}
+
+function teacherNameFromClass(c: Row): string {
+  const primary = obj(c.classTeacher);
+  if (primary.name) return str(primary.name);
+  const teachers = arr(c.teachers);
+  const first = teachers[0] ? obj(obj(teachers[0]).staffProfile).user : null;
+  const user = obj(first);
+  return str(user.name) || "—";
+}
 
 export default function ClassesPage() {
   const router = useRouter();
   const [years, setYears] = useState<Row[]>([]);
   const [classes, setClasses] = useState<Row[]>([]);
+  const [teachers, setTeachers] = useState<Row[]>([]);
   const [filterYear, setFilterYear] = useState<string>("ALL");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -63,6 +76,10 @@ export default function ClassesPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editFee, setEditFee] = useState("");
   const [savingFee, setSavingFee] = useState(false);
+  const [assigningClassId, setAssigningClassId] = useState<string | null>(null);
+  const [assignTeacherId, setAssignTeacherId] = useState<
+    Record<string, string>
+  >({});
 
   const handleErr = useCallback(
     (err: unknown, fallback: string) => {
@@ -94,9 +111,13 @@ export default function ClassesPage() {
     (async () => {
       setLoading(true);
       try {
-        const yr = await schoolApi.academicYears.list();
+        const [yr, staffRes] = await Promise.all([
+          schoolApi.academicYears.list(),
+          schoolApi.staff.list("TEACHER"),
+        ]);
         if (!active) return;
         setYears(yr.academicYears);
+        setTeachers(staffRes.staff);
         const current = yr.academicYears.find((y) => y.isCurrent);
         if (current) {
           setForm((p) => ({ ...p, academicYearId: str(current.id) }));
@@ -167,6 +188,29 @@ export default function ClassesPage() {
       handleErr(err, "Failed to update monthly fee");
     } finally {
       setSavingFee(false);
+    }
+  }
+
+  async function onAssignTeacher(classId: string) {
+    const staffProfileId = assignTeacherId[classId];
+    if (!staffProfileId) {
+      setError("Select a teacher to assign.");
+      return;
+    }
+    setAssigningClassId(classId);
+    setError("");
+    setMessage("");
+    try {
+      await schoolApi.classes.assignTeacher(classId, {
+        staffProfileId,
+        isPrimary: true,
+      });
+      setMessage("Teacher assigned to class.");
+      await loadClasses(filterYear);
+    } catch (err) {
+      handleErr(err, "Failed to assign teacher");
+    } finally {
+      setAssigningClassId(null);
     }
   }
 
@@ -323,18 +367,20 @@ export default function ClassesPage() {
                   <TableHead>Monthly fee</TableHead>
                   <TableHead>Year</TableHead>
                   <TableHead>Students</TableHead>
+                  <TableHead>Class teacher</TableHead>
+                  <TableHead>Assign teacher</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-muted-foreground">
+                    <TableCell colSpan={7} className="text-muted-foreground">
                       Loading...
                     </TableCell>
                   </TableRow>
                 ) : classes.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-muted-foreground">
+                    <TableCell colSpan={7} className="text-muted-foreground">
                       No classes yet.
                     </TableCell>
                   </TableRow>
@@ -399,6 +445,51 @@ export default function ClassesPage() {
                         </TableCell>
                         <TableCell>{str(year.name) || "—"}</TableCell>
                         <TableCell>{num(count.enrollments)}</TableCell>
+                        <TableCell>{teacherNameFromClass(c)}</TableCell>
+                        <TableCell>
+                          <div className="flex min-w-[220px] items-center gap-2">
+                            <Select
+                              value={assignTeacherId[id] ?? ""}
+                              onValueChange={(v) =>
+                                setAssignTeacherId((p) => ({
+                                  ...p,
+                                  [id]: v,
+                                }))
+                              }
+                            >
+                              <SelectTrigger className="h-8 w-40">
+                                <SelectValue placeholder="Select teacher" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {teachers.map((t) => {
+                                  const user = obj(t.user);
+                                  return (
+                                    <SelectItem
+                                      key={str(t.id)}
+                                      value={str(t.id)}
+                                    >
+                                      {str(user.name)}
+                                    </SelectItem>
+                                  );
+                                })}
+                              </SelectContent>
+                            </Select>
+                            <Button
+                              type="button"
+                              size="sm"
+                              disabled={
+                                assigningClassId === id ||
+                                !assignTeacherId[id] ||
+                                teachers.length === 0
+                              }
+                              onClick={() => void onAssignTeacher(id)}
+                            >
+                              {assigningClassId === id
+                                ? "Saving..."
+                                : "Assign"}
+                            </Button>
+                          </div>
+                        </TableCell>
                       </TableRow>
                     );
                   })

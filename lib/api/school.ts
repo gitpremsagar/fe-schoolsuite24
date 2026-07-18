@@ -76,8 +76,19 @@ export const schoolApi = {
       const qs = staffType ? `?staffType=${staffType}` : "";
       return apiFetch<{ staff: Array<Record<string, unknown>> }>(`/staff${qs}`);
     },
+    get: (id: string) =>
+      apiFetch<{ staff: Record<string, unknown> }>(`/staff/${id}`),
     create: (body: Record<string, unknown>) =>
       apiFetch("/staff", { method: "POST", body }),
+    update: (id: string, body: Record<string, unknown>) =>
+      apiFetch(`/staff/${id}`, { method: "PATCH", body }),
+    remove: (id: string) =>
+      apiFetch(`/staff/${id}`, { method: "DELETE" }),
+    purge: (id: string, password: string) =>
+      apiFetch(`/staff/${id}/purge`, {
+        method: "POST",
+        body: { password },
+      }),
     me: () => apiFetch<{ staff: Record<string, unknown> }>("/staff/me"),
   },
   billing: {
