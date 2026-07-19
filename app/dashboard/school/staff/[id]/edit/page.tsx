@@ -63,7 +63,6 @@ export default function EditStaffPage() {
     joiningDate: "",
     leavingDate: "",
     isCurrentlyWorking: true,
-    monthlySalary: "",
     expectedPunchInTime: "",
     expectedPunchOutTime: "",
   });
@@ -114,8 +113,6 @@ export default function EditStaffPage() {
             staff.isCurrentlyWorking === undefined
               ? true
               : Boolean(staff.isCurrentlyWorking),
-          monthlySalary:
-            staff.monthlySalary == null ? "" : String(staff.monthlySalary),
           expectedPunchInTime: str(staff.expectedPunchInTime),
           expectedPunchOutTime: str(staff.expectedPunchOutTime),
         });
@@ -153,9 +150,6 @@ export default function EditStaffPage() {
         leavingDate: form.isCurrentlyWorking
           ? null
           : form.leavingDate || null,
-        monthlySalary: form.monthlySalary.trim()
-          ? Number(form.monthlySalary)
-          : null,
         expectedPunchInTime: form.expectedPunchInTime || null,
         expectedPunchOutTime: form.expectedPunchOutTime || null,
       };
@@ -350,18 +344,6 @@ export default function EditStaffPage() {
                     />
                   </div>
                 ) : null}
-                <div className="space-y-1">
-                  <Label>Monthly salary</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={form.monthlySalary}
-                    onChange={(e) =>
-                      setForm((p) => ({ ...p, monthlySalary: e.target.value }))
-                    }
-                  />
-                </div>
                 <div className="space-y-1">
                   <Label>Punch-in time</Label>
                   <Input

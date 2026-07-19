@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Button } from "@/components/ui/button";
 import {
@@ -37,6 +37,8 @@ type MonthCell = {
   notes: string | null;
   paymentId: string | null;
 };
+
+const ALL_CLASSES = "__all__";
 
 function str(v: unknown): string {
   return v == null ? "" : String(v);
@@ -103,9 +105,35 @@ type Editor = {
 };
 
 export default function FeesPage() {
+  return (
+    <Suspense
+      fallback={
+        <DashboardShell allowedRoles={["ADMIN"]}>
+          <p className="text-sm text-muted-foreground">Loading fees...</p>
+        </DashboardShell>
+      }
+    >
+      <FeesPageContent />
+    </Suspense>
+  );
+}
+
+function FeesPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialStudent = searchParams.get("student") ?? "";
+  const initialQ = searchParams.get("q") ?? "";
+  const initialClassId = searchParams.get("classId") ?? "";
+  const initialYear = searchParams.get("year") ?? "";
+
   const [years, setYears] = useState<Row[]>([]);
-  const [filterYearId, setFilterYearId] = useState("");
+  const [classes, setClasses] = useState<Row[]>([]);
+  const [filterYearId, setFilterYearId] = useState(initialYear);
+  const [filterClassId, setFilterClassId] = useState(
+    initialClassId || ALL_CLASSES,
+  );
+  const [nameQuery, setNameQuery] = useState(initialQ);
+  const [focusStudentId, setFocusStudentId] = useState(initialStudent);
   const [months, setMonths] = useState<MonthCol[]>([]);
   const [students, setStudents] = useState<Row[]>([]);
   const [error, setError] = useState("");
@@ -134,18 +162,25 @@ export default function FeesPage() {
   useEffect(() => {
     (async () => {
       try {
-        const yr = await schoolApi.academicYears.list();
+        const [yr, cls] = await Promise.all([
+          schoolApi.academicYears.list(),
+          schoolApi.classes.list(),
+        ]);
         setYears(yr.academicYears);
+        setClasses(cls.classes);
         const current = yr.academicYears.find((y) => y.isCurrent);
         const currentId = current
           ? str(current.id)
           : str(yr.academicYears[0]?.id);
-        setFilterYearId((prev) => prev || currentId);
+        const yearExists = initialYear
+          ? yr.academicYears.some((y) => str(y.id) === initialYear)
+          : false;
+        setFilterYearId((prev) => prev || (yearExists ? initialYear : currentId));
       } catch (err) {
         handleErr(err, "Failed to load academic years");
       }
     })();
-  }, [handleErr]);
+  }, [handleErr, initialYear]);
 
   const loadRegister = useCallback(async () => {
     if (!filterYearId) return;
@@ -170,6 +205,22 @@ export default function FeesPage() {
     const y = years.find((row) => str(row.id) === filterYearId);
     return y ? str(y.name) : "";
   }, [years, filterYearId]);
+
+  const filteredStudents = useMemo(() => {
+    if (focusStudentId) {
+      return students.filter(
+        (s) => str(s.studentProfileId) === focusStudentId,
+      );
+    }
+    const q = nameQuery.trim().toLowerCase();
+    return students.filter((s) => {
+      if (filterClassId !== ALL_CLASSES && str(s.classId) !== filterClassId) {
+        return false;
+      }
+      if (!q) return true;
+      return str(s.name).toLowerCase().includes(q);
+    });
+  }, [students, filterClassId, nameQuery, focusStudentId]);
 
   function openCell(student: Row, mo: MonthCol) {
     const monthsMap = (student.months ?? {}) as Record<string, MonthCell>;
@@ -254,17 +305,24 @@ export default function FeesPage() {
   return (
     <DashboardShell allowedRoles={["ADMIN"]}>
       <div className="space-y-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-semibold">Fees</h1>
-            <p className="text-sm text-muted-foreground">
-              Monthly fee payment status by student. Set monthly fees on the
-              Classes page.
-            </p>
-          </div>
+        <div>
+          <h1 className="text-2xl font-semibold">Fees</h1>
+          <p className="text-sm text-muted-foreground">
+            Monthly fee payment status by student. Set monthly fees on the
+            Classes page.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-end gap-3">
           <div className="space-y-1">
             <Label>Academic year</Label>
-            <Select value={filterYearId} onValueChange={setFilterYearId}>
+            <Select
+              value={filterYearId}
+              onValueChange={(v) => {
+                setFocusStudentId("");
+                setFilterYearId(v);
+              }}
+            >
               <SelectTrigger className="w-48">
                 <SelectValue placeholder="Select year" />
               </SelectTrigger>
@@ -277,6 +335,43 @@ export default function FeesPage() {
                 ))}
               </SelectContent>
             </Select>
+          </div>
+          <div className="space-y-1">
+            <Label>Class</Label>
+            <Select
+              value={filterClassId}
+              onValueChange={(v) => {
+                setFocusStudentId("");
+                setFilterClassId(v);
+              }}
+            >
+              <SelectTrigger className="w-56">
+                <SelectValue placeholder="All classes" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_CLASSES}>All classes</SelectItem>
+                {classes.map((c) => (
+                  <SelectItem key={str(c.id)} value={str(c.id)}>
+                    {formatClassLabel(
+                      str(c.classLevel) || str(c.name),
+                      str(c.section) || null,
+                    )}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="min-w-[14rem] flex-1 space-y-1 sm:max-w-xs">
+            <Label htmlFor="fee-student-search">Search student</Label>
+            <Input
+              id="fee-student-search"
+              value={nameQuery}
+              onChange={(e) => {
+                setFocusStudentId("");
+                setNameQuery(e.target.value);
+              }}
+              placeholder="Search by name..."
+            />
           </div>
         </div>
 
@@ -298,6 +393,10 @@ export default function FeesPage() {
               {selectedYearName
                 ? `No enrolled students for ${selectedYearName}.`
                 : "No students."}
+            </p>
+          ) : filteredStudents.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No students match the current search or class filter.
             </p>
           ) : (
             <div className="overflow-auto rounded-xl border">
@@ -325,7 +424,7 @@ export default function FeesPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {students.map((s) => {
+                  {filteredStudents.map((s) => {
                     const id = str(s.studentProfileId);
                     const monthsMap = (s.months ?? {}) as Record<
                       string,

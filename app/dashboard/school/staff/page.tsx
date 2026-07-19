@@ -167,7 +167,6 @@ export default function StaffPage() {
     joiningDate: "",
     leavingDate: "",
     isCurrentlyWorking: true,
-    monthlySalary: "",
     expectedPunchInTime: "",
     expectedPunchOutTime: "",
   });
@@ -230,9 +229,6 @@ export default function StaffPage() {
         ...(!form.isCurrentlyWorking && form.leavingDate
           ? { leavingDate: form.leavingDate }
           : {}),
-        ...(form.monthlySalary.trim()
-          ? { monthlySalary: Number(form.monthlySalary) }
-          : {}),
         ...(form.expectedPunchInTime
           ? { expectedPunchInTime: form.expectedPunchInTime }
           : {}),
@@ -253,7 +249,6 @@ export default function StaffPage() {
         joiningDate: "",
         leavingDate: "",
         isCurrentlyWorking: true,
-        monthlySalary: "",
         expectedPunchInTime: "",
         expectedPunchOutTime: "",
       }));
@@ -428,18 +423,6 @@ export default function StaffPage() {
                     />
                   </div>
                 ) : null}
-                <div className="space-y-1">
-                  <Label>Monthly salary</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={form.monthlySalary}
-                    onChange={(e) =>
-                      setForm((p) => ({ ...p, monthlySalary: e.target.value }))
-                    }
-                  />
-                </div>
                 <div className="space-y-1">
                   <Label>Punch-in time</Label>
                   <Input

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
@@ -45,6 +45,20 @@ function toDateInput(v: unknown): string {
 }
 
 export default function EditStudentPage() {
+  return (
+    <Suspense
+      fallback={
+        <DashboardShell allowedRoles={["ADMIN"]}>
+          <p className="text-sm text-muted-foreground">Loading...</p>
+        </DashboardShell>
+      }
+    >
+      <EditStudentPageContent />
+    </Suspense>
+  );
+}
+
+function EditStudentPageContent() {
   const router = useRouter();
   const params = useParams();
   const searchParams = useSearchParams();

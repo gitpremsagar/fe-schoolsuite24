@@ -263,14 +263,6 @@ export default function StaffDetailPage() {
                   value={working ? "—" : formatDate(staff.leavingDate)}
                 />
                 <DetailItem
-                  label="Monthly salary"
-                  value={
-                    staff.monthlySalary == null
-                      ? "—"
-                      : String(staff.monthlySalary)
-                  }
-                />
-                <DetailItem
                   label="Punch-in time"
                   value={str(staff.expectedPunchInTime)}
                 />

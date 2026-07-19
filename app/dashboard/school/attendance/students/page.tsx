@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -55,18 +56,37 @@ function classLabel(s: Row): string {
 }
 
 export default function StudentAttendancePage() {
+  return (
+    <Suspense
+      fallback={
+        <p className="text-sm text-muted-foreground">Loading attendance...</p>
+      }
+    >
+      <StudentAttendancePageContent />
+    </Suspense>
+  );
+}
+
+function StudentAttendancePageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialStudent = searchParams.get("student") ?? "";
+  const initialQ = searchParams.get("q") ?? "";
+  const initialClassId = searchParams.get("classId") ?? "";
+
   const initial = currentYearMonth();
   const [classes, setClasses] = useState<Row[]>([]);
-  const [classId, setClassId] = useState(ALL_CLASSES);
+  const [classId, setClassId] = useState(initialClassId || ALL_CLASSES);
+  const [nameQuery, setNameQuery] = useState(initialQ);
+  const [focusStudentId, setFocusStudentId] = useState(initialStudent);
   const [year, setYear] = useState(initial.year);
   const [month, setMonth] = useState(initial.month);
   const [days, setDays] = useState<number[]>([]);
   const [students, setStudents] = useState<Row[]>([]);
   /** marks[studentProfileId][day] */
-  const [marks, setMarks] = useState<Record<string, Record<string, Status | null>>>(
-    {},
-  );
+  const [marks, setMarks] = useState<
+    Record<string, Record<string, Status | null>>
+  >({});
   const [dirty, setDirty] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -91,11 +111,17 @@ export default function StudentAttendancePage() {
       try {
         const res = await schoolApi.classes.list();
         setClasses(res.classes);
+        if (
+          initialClassId &&
+          !res.classes.some((c) => str(c.id) === initialClassId)
+        ) {
+          setClassId(ALL_CLASSES);
+        }
       } catch (err) {
         handleErr(err, "Failed to load classes");
       }
     })();
-  }, [handleErr]);
+  }, [handleErr, initialClassId]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -140,6 +166,17 @@ export default function StudentAttendancePage() {
     }
     return map;
   }, [students]);
+
+  const filteredStudents = useMemo(() => {
+    if (focusStudentId) {
+      return students.filter(
+        (s) => str(s.studentProfileId) === focusStudentId,
+      );
+    }
+    const q = nameQuery.trim().toLowerCase();
+    if (!q) return students;
+    return students.filter((s) => str(s.name).toLowerCase().includes(q));
+  }, [students, nameQuery, focusStudentId]);
 
   function toggleCell(studentId: string, day: number) {
     setMarks((prev) => {
@@ -206,7 +243,13 @@ export default function StudentAttendancePage() {
       <div className="flex flex-wrap items-end gap-3">
         <div className="space-y-1">
           <Label>Class</Label>
-          <Select value={classId} onValueChange={setClassId}>
+          <Select
+            value={classId}
+            onValueChange={(v) => {
+              setFocusStudentId("");
+              setClassId(v);
+            }}
+          >
             <SelectTrigger className="w-56">
               <SelectValue placeholder="All classes" />
             </SelectTrigger>
@@ -222,6 +265,18 @@ export default function StudentAttendancePage() {
               ))}
             </SelectContent>
           </Select>
+        </div>
+        <div className="min-w-[14rem] flex-1 space-y-1 sm:max-w-xs">
+          <Label htmlFor="attendance-student-search">Search student</Label>
+          <Input
+            id="attendance-student-search"
+            value={nameQuery}
+            onChange={(e) => {
+              setFocusStudentId("");
+              setNameQuery(e.target.value);
+            }}
+            placeholder="Search by name..."
+          />
         </div>
         <div className="space-y-1">
           <Label>Year</Label>
@@ -291,6 +346,10 @@ export default function StudentAttendancePage() {
             ? "No enrolled students found."
             : "No enrolled students in this class."}
         </p>
+      ) : filteredStudents.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          No students match the current search.
+        </p>
       ) : (
         <div className="overflow-auto rounded-xl border">
           <table className="min-w-max w-full border-collapse text-xs">
@@ -328,7 +387,7 @@ export default function StudentAttendancePage() {
               </tr>
             </thead>
             <tbody>
-              {students.map((s) => {
+              {filteredStudents.map((s) => {
                 const id = str(s.studentProfileId);
                 return (
                   <tr key={id} className="border-t">

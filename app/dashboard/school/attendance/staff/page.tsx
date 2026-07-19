@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -78,6 +79,11 @@ function isoToTimeInput(iso: string | null | undefined): string {
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
 
+function nowTimeInput() {
+  const now = new Date();
+  return `${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
+}
+
 function localDateTimeIso(
   year: number,
   month: number,
@@ -88,6 +94,13 @@ function localDateTimeIso(
   return new Date(year, month - 1, day, h, m, 0, 0).toISOString();
 }
 
+function attendanceIso(v: unknown): string | null {
+  if (v == null) return null;
+  if (typeof v === "string") return v;
+  const d = new Date(String(v));
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
 export default function StaffAttendancePage() {
   const router = useRouter();
   const initial = currentYearMonth();
@@ -96,31 +109,37 @@ export default function StaffAttendancePage() {
   const [days, setDays] = useState<number[]>([]);
   const [staff, setStaff] = useState<Row[]>([]);
   /** marks[staffProfileId][day] */
-  const [marks, setMarks] = useState<Record<string, Record<string, Status | null>>>(
-    {},
-  );
-  const [punches, setPunches] = useState<
-    Record<string, Record<string, { punchInAt: string | null; punchOutAt: string | null }>>
+  const [marks, setMarks] = useState<
+    Record<string, Record<string, Status | null>>
   >({});
-  const [dirty, setDirty] = useState(false);
+  const [punches, setPunches] = useState<
+    Record<
+      string,
+      Record<string, { punchInAt: string | null; punchOutAt: string | null }>
+    >
+  >({});
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
 
   const [editor, setEditor] = useState<CellEditor | null>(null);
-  const [editPunchIn, setEditPunchIn] = useState("09:00");
-  const [editPunchOut, setEditPunchOut] = useState("17:00");
+  const [editPunchIn, setEditPunchIn] = useState(() => nowTimeInput());
+  const [editPunchOut, setEditPunchOut] = useState(() => nowTimeInput());
   const [editError, setEditError] = useState("");
+  const [actionSaving, setActionSaving] = useState(false);
 
   const editorKey = editor ? String(editor.day) : "";
-  const editorHasPunchIn = Boolean(
-    editor && punches[editor.staffId]?.[editorKey]?.punchInAt,
-  );
+  const editorPunch = editor
+    ? punches[editor.staffId]?.[editorKey]
+    : undefined;
+  const editorStatus = editor
+    ? (marks[editor.staffId]?.[editorKey] ?? null)
+    : null;
+  const editorHasPunchIn = Boolean(editorPunch?.punchInAt);
+  const editorHasPunchOut = Boolean(editorPunch?.punchOutAt);
+  const editorIsAbsent = editorStatus === "ABSENT";
   const editorHasAnyMark = Boolean(
-    editor &&
-      (marks[editor.staffId]?.[editorKey] != null ||
-        punches[editor.staffId]?.[editorKey]?.punchInAt),
+    editor && (editorStatus != null || editorHasPunchIn),
   );
 
   const handleErr = useCallback(
@@ -129,7 +148,7 @@ export default function StaffAttendancePage() {
         router.replace("/access-blocked");
         return;
       }
-      setError(errorMessage(err, fallback));
+      return errorMessage(err, fallback);
     },
     [router],
   );
@@ -137,7 +156,6 @@ export default function StaffAttendancePage() {
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
-    setMessage("");
     try {
       const res = await attendanceApi.staffMonth(year, month);
       setDays(res.days);
@@ -162,9 +180,8 @@ export default function StaffAttendancePage() {
       }
       setMarks(nextMarks);
       setPunches(nextPunches);
-      setDirty(false);
     } catch (err) {
-      handleErr(err, "Failed to load staff monthly attendance");
+      setError(handleErr(err, "Failed to load staff monthly attendance") ?? "");
     } finally {
       setLoading(false);
     }
@@ -180,154 +197,180 @@ export default function StaffAttendancePage() {
   }, []);
 
   function openCell(staffId: string, staffName: string, day: number) {
+    if (actionSaving) return;
     const key = String(day);
     const punch = punches[staffId]?.[key];
+    const now = nowTimeInput();
     setEditor({ staffId, staffName, day });
-    setEditPunchIn(isoToTimeInput(punch?.punchInAt) || "09:00");
-    setEditPunchOut(isoToTimeInput(punch?.punchOutAt) || "17:00");
+    setEditPunchIn(isoToTimeInput(punch?.punchInAt) || now);
+    setEditPunchOut(isoToTimeInput(punch?.punchOutAt) || now);
     setEditError("");
-  }
-
-  function markDirty() {
-    setDirty(true);
     setMessage("");
   }
 
-  function punchIn() {
-    if (!editor) return;
-    if (!editPunchIn) {
-      setEditError("Choose a punch-in time.");
-      return;
-    }
-    const { staffId, day } = editor;
+  function applyLocalDay(
+    staffId: string,
+    day: number,
+    next: {
+      status: Status | null;
+      punchInAt: string | null;
+      punchOutAt: string | null;
+    },
+  ) {
     const key = String(day);
-    const punchInAt = localDateTimeIso(year, month, day, editPunchIn);
-    const existingOut = punches[staffId]?.[key]?.punchOutAt ?? null;
-    const punchOutAt =
-      existingOut && new Date(existingOut).getTime() >= new Date(punchInAt).getTime()
-        ? existingOut
-        : null;
-
     setMarks((prev) => ({
       ...prev,
-      [staffId]: { ...(prev[staffId] ?? {}), [key]: "PRESENT" },
+      [staffId]: { ...(prev[staffId] ?? {}), [key]: next.status },
     }));
     setPunches((prev) => ({
       ...prev,
       [staffId]: {
         ...(prev[staffId] ?? {}),
-        [key]: { punchInAt, punchOutAt },
+        [key]: {
+          punchInAt: next.punchInAt,
+          punchOutAt: next.punchOutAt,
+        },
       },
     }));
-    if (!punchOutAt) {
-      setEditPunchOut("17:00");
-    }
-    markDirty();
-    setEditError("");
   }
 
-  function punchOut() {
+  async function persistDay(
+    body: {
+      staffProfileId: string;
+      date: string;
+      status: Status | null;
+      punchInAt?: string | null;
+      punchOutAt?: string | null;
+    },
+    local: {
+      status: Status | null;
+      punchInAt: string | null;
+      punchOutAt: string | null;
+    },
+    successMessage: string,
+  ) {
     if (!editor) return;
-    const { staffId, day } = editor;
-    const key = String(day);
-    const existingIn = punches[staffId]?.[key]?.punchInAt;
+    setActionSaving(true);
+    setEditError("");
+    setError("");
+    try {
+      const res = await attendanceApi.saveStaffDay(body);
+      if (res.attendance) {
+        applyLocalDay(editor.staffId, editor.day, {
+          status: (str(res.attendance.status) as Status) || local.status,
+          punchInAt: attendanceIso(res.attendance.punchInAt),
+          punchOutAt: attendanceIso(res.attendance.punchOutAt),
+        });
+      } else {
+        applyLocalDay(editor.staffId, editor.day, local);
+      }
+      setMessage(successMessage);
+      setEditor(null);
+    } catch (err) {
+      setEditError(handleErr(err, "Failed to save attendance") ?? "");
+    } finally {
+      setActionSaving(false);
+    }
+  }
+
+  async function punchIn() {
+    if (!editor || actionSaving) return;
+    if (editorHasPunchIn) {
+      setEditError("Punch-in is already recorded for this day.");
+      return;
+    }
+    if (!editPunchIn) {
+      setEditError("Choose a punch-in time.");
+      return;
+    }
+    const punchInAt = localDateTimeIso(
+      year,
+      month,
+      editor.day,
+      editPunchIn,
+    );
+    await persistDay(
+      {
+        staffProfileId: editor.staffId,
+        date: dateKey(year, month, editor.day),
+        status: "PRESENT",
+        punchInAt,
+        punchOutAt: null,
+      },
+      { status: "PRESENT", punchInAt, punchOutAt: null },
+      "Punch-in saved.",
+    );
+  }
+
+  async function punchOut() {
+    if (!editor || actionSaving) return;
+    const existingIn = editorPunch?.punchInAt;
     if (!existingIn) {
       setEditError("Punch in first before punching out.");
+      return;
+    }
+    if (editorHasPunchOut) {
+      setEditError("Punch-out is already recorded for this day.");
       return;
     }
     if (!editPunchOut) {
       setEditError("Choose a punch-out time.");
       return;
     }
-    const punchOutAt = localDateTimeIso(year, month, day, editPunchOut);
+    const punchOutAt = localDateTimeIso(
+      year,
+      month,
+      editor.day,
+      editPunchOut,
+    );
     if (new Date(punchOutAt).getTime() < new Date(existingIn).getTime()) {
       setEditError("Punch-out must be after punch-in.");
       return;
     }
-
-    setMarks((prev) => ({
-      ...prev,
-      [staffId]: { ...(prev[staffId] ?? {}), [key]: "PRESENT" },
-    }));
-    setPunches((prev) => ({
-      ...prev,
-      [staffId]: {
-        ...(prev[staffId] ?? {}),
-        [key]: { punchInAt: existingIn, punchOutAt },
+    await persistDay(
+      {
+        staffProfileId: editor.staffId,
+        date: dateKey(year, month, editor.day),
+        status: "PRESENT",
+        punchInAt: existingIn,
+        punchOutAt,
       },
-    }));
-    markDirty();
-    setEditError("");
+      { status: "PRESENT", punchInAt: existingIn, punchOutAt },
+      "Punch-out saved.",
+    );
   }
 
-  function undoMark() {
-    if (!editor) return;
-    const { staffId, day } = editor;
-    const key = String(day);
-    setMarks((prev) => ({
-      ...prev,
-      [staffId]: { ...(prev[staffId] ?? {}), [key]: null },
-    }));
-    setPunches((prev) => ({
-      ...prev,
-      [staffId]: {
-        ...(prev[staffId] ?? {}),
-        [key]: { punchInAt: null, punchOutAt: null },
-      },
-    }));
-    setEditPunchIn("09:00");
-    setEditPunchOut("17:00");
-    markDirty();
-    setEditError("");
-  }
-
-  async function save() {
-    setSaving(true);
-    setError("");
-    setMessage("");
-    try {
-      const records: Array<{
-        staffProfileId: string;
-        date: string;
-        status: Status | null;
-        punchInAt?: string | null;
-        punchOutAt?: string | null;
-      }> = [];
-      for (const [staffId, dayMap] of Object.entries(marks)) {
-        for (const [day, status] of Object.entries(dayMap)) {
-          const punch = punches[staffId]?.[day];
-          records.push({
-            staffProfileId: staffId,
-            date: dateKey(year, month, Number(day)),
-            status,
-            punchInAt: status === "PRESENT" ? (punch?.punchInAt ?? null) : null,
-            punchOutAt:
-              status === "PRESENT" ? (punch?.punchOutAt ?? null) : null,
-          });
-        }
-      }
-      if (records.length === 0) {
-        setError("Mark at least one attendance cell before saving.");
-        setSaving(false);
-        return;
-      }
-      const missingPunch = records.find(
-        (r) => r.status === "PRESENT" && !r.punchInAt,
-      );
-      if (missingPunch) {
-        setError("Present marks need a punch-in time. Open the cell and set times.");
-        setSaving(false);
-        return;
-      }
-      await attendanceApi.saveStaffMonth({ records });
-      setMessage("Staff monthly attendance saved.");
-      setDirty(false);
-      await load();
-    } catch (err) {
-      handleErr(err, "Failed to save staff attendance");
-    } finally {
-      setSaving(false);
+  async function markAbsent() {
+    if (!editor || actionSaving) return;
+    if (editorHasPunchIn) {
+      setEditError("Undo the punch first before marking absent.");
+      return;
     }
+    await persistDay(
+      {
+        staffProfileId: editor.staffId,
+        date: dateKey(year, month, editor.day),
+        status: "ABSENT",
+        punchInAt: null,
+        punchOutAt: null,
+      },
+      { status: "ABSENT", punchInAt: null, punchOutAt: null },
+      "Marked absent.",
+    );
+  }
+
+  async function undoMark() {
+    if (!editor || actionSaving) return;
+    if (!editorHasAnyMark) return;
+    await persistDay(
+      {
+        staffProfileId: editor.staffId,
+        date: dateKey(year, month, editor.day),
+        status: null,
+      },
+      { status: null, punchInAt: null, punchOutAt: null },
+      "Attendance cleared.",
+    );
   }
 
   function shiftMonth(delta: number) {
@@ -385,14 +428,12 @@ export default function StaffAttendancePage() {
             Next
           </Button>
         </div>
-        <Button type="button" onClick={save} disabled={saving || !dirty}>
-          {saving ? "Saving..." : "Save register"}
-        </Button>
       </div>
 
       <p className="text-sm text-muted-foreground">
-        {monthLabel(year, month)} · Click a cell to punch in, punch out, or
-        undo, then save.
+        {monthLabel(year, month)} · Click a cell to punch in, punch out, mark
+        absent, or undo. Changes save immediately. IP = punched in, awaiting
+        punch out.
       </p>
 
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
@@ -440,13 +481,16 @@ export default function StaffAttendancePage() {
                     {days.map((day) => {
                       const status = marks[id]?.[String(day)] ?? null;
                       const punch = punches[id]?.[String(day)];
-                      const title =
-                        status === "PRESENT" && punch?.punchInAt
-                          ? `In ${fmtTime(punch.punchInAt)}${
-                              punch.punchOutAt
-                                ? ` · Out ${fmtTime(punch.punchOutAt)}`
-                                : " · No punch out"
-                            }`
+                      const hasPunchIn = Boolean(punch?.punchInAt);
+                      const hasPunchOut = Boolean(punch?.punchOutAt);
+                      const inProgress =
+                        status === "PRESENT" && hasPunchIn && !hasPunchOut;
+                      const complete =
+                        status === "PRESENT" && hasPunchIn && hasPunchOut;
+                      const title = inProgress
+                        ? `In progress · In ${fmtTime(punch?.punchInAt)} · No punch out`
+                        : complete
+                          ? `In ${fmtTime(punch?.punchInAt)} · Out ${fmtTime(punch?.punchOutAt)}`
                           : status === "ABSENT"
                             ? "Absent"
                             : "Click to mark";
@@ -457,20 +501,22 @@ export default function StaffAttendancePage() {
                             title={title}
                             onClick={() => openCell(id, str(s.name), day)}
                             className={cn(
-                              "mx-auto flex h-7 w-7 items-center justify-center rounded text-[11px] font-semibold",
-                              status === "PRESENT" &&
-                                "bg-emerald-100 text-emerald-800",
+                              "mx-auto flex h-7 min-w-7 items-center justify-center rounded px-0.5 text-[10px] font-semibold",
+                              complete && "bg-emerald-100 text-emerald-800",
+                              inProgress && "bg-amber-100 text-amber-900",
                               status === "ABSENT" &&
                                 "bg-red-100 text-red-800",
                               status == null &&
                                 "bg-muted/40 text-muted-foreground hover:bg-muted",
                             )}
                           >
-                            {status === "PRESENT"
-                              ? "P"
-                              : status === "ABSENT"
-                                ? "A"
-                                : "·"}
+                            {inProgress
+                              ? "IP"
+                              : complete
+                                ? "P"
+                                : status === "ABSENT"
+                                  ? "A"
+                                  : "·"}
                           </button>
                         </td>
                       );
@@ -486,7 +532,7 @@ export default function StaffAttendancePage() {
       <Dialog
         open={editor != null}
         onOpenChange={(open) => {
-          if (!open) setEditor(null);
+          if (!open && !actionSaving) setEditor(null);
         }}
       >
         <DialogContent className="sm:max-w-md">
@@ -499,14 +545,24 @@ export default function StaffAttendancePage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-2">
-            {editorHasPunchIn ? (
+          <div className="relative space-y-4 py-2">
+            {actionSaving ? (
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-md bg-background/80">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">Saving...</p>
+              </div>
+            ) : null}
+
+            {editorIsAbsent ? (
               <p className="text-sm text-muted-foreground">
-                Recorded: In{" "}
-                {fmtTime(punches[editor!.staffId]?.[editorKey]?.punchInAt)}
-                {punches[editor!.staffId]?.[editorKey]?.punchOutAt
-                  ? ` · Out ${fmtTime(punches[editor!.staffId]?.[editorKey]?.punchOutAt)}`
-                  : " · No punch out yet"}
+                Marked absent for this day.
+              </p>
+            ) : editorHasPunchIn ? (
+              <p className="text-sm text-muted-foreground">
+                Recorded: In {fmtTime(editorPunch?.punchInAt)}
+                {editorHasPunchOut
+                  ? ` · Out ${fmtTime(editorPunch?.punchOutAt)}`
+                  : " · In progress (no punch out yet)"}
               </p>
             ) : (
               <p className="text-sm text-muted-foreground">
@@ -522,6 +578,9 @@ export default function StaffAttendancePage() {
                   type="time"
                   value={editPunchIn}
                   onChange={(e) => setEditPunchIn(e.target.value)}
+                  disabled={
+                    actionSaving || editorHasPunchIn || editorIsAbsent
+                  }
                 />
               </div>
               <div className="space-y-1">
@@ -531,6 +590,12 @@ export default function StaffAttendancePage() {
                   type="time"
                   value={editPunchOut}
                   onChange={(e) => setEditPunchOut(e.target.value)}
+                  disabled={
+                    actionSaving ||
+                    !editorHasPunchIn ||
+                    editorHasPunchOut ||
+                    editorIsAbsent
+                  }
                 />
               </div>
             </div>
@@ -542,24 +607,47 @@ export default function StaffAttendancePage() {
 
           <DialogFooter className="flex-col gap-2 sm:flex-col sm:space-x-0">
             <div className="flex w-full flex-wrap gap-2">
-              <Button type="button" className="flex-1" onClick={punchIn}>
+              <Button
+                type="button"
+                className="flex-1"
+                onClick={() => void punchIn()}
+                disabled={
+                  actionSaving || editorHasPunchIn || editorIsAbsent
+                }
+              >
                 Punch in
               </Button>
               <Button
                 type="button"
                 className="flex-1"
                 variant="secondary"
-                onClick={punchOut}
-                disabled={!editorHasPunchIn}
+                onClick={() => void punchOut()}
+                disabled={
+                  actionSaving ||
+                  !editorHasPunchIn ||
+                  editorHasPunchOut ||
+                  editorIsAbsent
+                }
               >
                 Punch out
               </Button>
               <Button
                 type="button"
                 className="flex-1"
+                variant="destructive"
+                onClick={() => void markAbsent()}
+                disabled={
+                  actionSaving || editorHasPunchIn || editorIsAbsent
+                }
+              >
+                Absent
+              </Button>
+              <Button
+                type="button"
+                className="flex-1"
                 variant="outline"
-                onClick={undoMark}
-                disabled={!editorHasAnyMark}
+                onClick={() => void undoMark()}
+                disabled={actionSaving || !editorHasAnyMark}
               >
                 Undo
               </Button>
@@ -569,6 +657,7 @@ export default function StaffAttendancePage() {
               variant="ghost"
               className="w-full"
               onClick={() => setEditor(null)}
+              disabled={actionSaving}
             >
               Close
             </Button>

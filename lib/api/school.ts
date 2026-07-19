@@ -166,6 +166,17 @@ export const attendanceApi = {
       days: number[];
       staff: Array<Record<string, unknown>>;
     }>(`/attendance/staff/month?year=${year}&month=${month}`),
-  saveStaffMonth: (body: Record<string, unknown>) =>
-    apiFetch("/attendance/staff/month", { method: "POST", body }),
+  saveStaffDay: (body: {
+    staffProfileId: string;
+    date: string;
+    status: "PRESENT" | "ABSENT" | null;
+    punchInAt?: string | null;
+    punchOutAt?: string | null;
+  }) =>
+    apiFetch<{
+      attendance?: Record<string, unknown>;
+      deleted?: boolean;
+      staffProfileId?: string;
+      date?: string;
+    }>("/attendance/staff/day", { method: "POST", body }),
 };

@@ -3,7 +3,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Pencil } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  CalendarDays,
+  Pencil,
+  Receipt,
+} from "lucide-react";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,13 +39,21 @@ import {
 } from "@/components/ui/table";
 import { schoolApi } from "@/lib/api/school";
 import { errorMessage, isSubscriptionInactive } from "@/lib/api/subscription";
-import { formatClassLabel } from "@/lib/class-levels";
+import { CLASS_LEVELS, formatClassLabel } from "@/lib/class-levels";
 import {
   downloadStudentImportTemplate,
   parseStudentImportFile,
 } from "@/lib/student-import";
+import { cn } from "@/lib/utils";
+import { StudentDetailSheet } from "@/components/students/student-detail-sheet";
+import { StudentAttendanceSheet } from "@/components/students/student-attendance-sheet";
+import { StudentFeeSheet } from "@/components/students/student-fee-sheet";
 
 type Row = Record<string, unknown>;
+type SortKey = "name" | "class";
+type SortDir = "asc" | "desc";
+
+const ALL_CLASSES = "__all__";
 
 function str(v: unknown): string {
   return v == null ? "" : String(v);
@@ -48,6 +63,37 @@ function obj(v: unknown): Row {
 }
 function arr(v: unknown): Row[] {
   return Array.isArray(v) ? (v as Row[]) : [];
+}
+
+function studentName(s: Row): string {
+  return str(obj(s.user).name);
+}
+
+function studentClassMeta(s: Row): {
+  label: string;
+  level: string;
+  section: string;
+  classId: string;
+} {
+  const enrollments = arr(s.enrollments);
+  const current = enrollments[0];
+  const klass = current ? obj(current.class) : {};
+  const level = str(klass.classLevel || klass.name);
+  const section = str(klass.section);
+  return {
+    level,
+    section,
+    classId: str(current?.classId || klass.id),
+    label:
+      level || klass.name
+        ? formatClassLabel(level || str(klass.name), section || null)
+        : "",
+  };
+}
+
+function classSortIndex(level: string): number {
+  const idx = (CLASS_LEVELS as readonly string[]).indexOf(level);
+  return idx >= 0 ? idx : CLASS_LEVELS.length;
 }
 
 export default function StudentsPage() {
@@ -89,6 +135,20 @@ export default function StudentsPage() {
     classId: "",
   });
   const [saving, setSaving] = useState(false);
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [filterClassId, setFilterClassId] = useState(ALL_CLASSES);
+  const [nameQuery, setNameQuery] = useState("");
+  const [detailStudentId, setDetailStudentId] = useState<string | null>(null);
+  const [attendanceTarget, setAttendanceTarget] = useState<{
+    id: string;
+    name: string;
+    classId: string;
+  } | null>(null);
+  const [feeTarget, setFeeTarget] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
 
   const handleErr = useCallback(
     (err: unknown, fallback: string) => {
@@ -156,10 +216,88 @@ export default function StudentsPage() {
     [classes, form.academicYearId],
   );
 
+  const classesForFilter = useMemo(
+    () =>
+      classes.filter(
+        (c) => !filterYearId || str(c.academicYearId) === filterYearId,
+      ),
+    [classes, filterYearId],
+  );
+
   const selectedYearName = useMemo(() => {
     const y = years.find((row) => str(row.id) === filterYearId);
     return y ? str(y.name) : "";
   }, [years, filterYearId]);
+
+  const filteredStudents = useMemo(() => {
+    const q = nameQuery.trim().toLowerCase();
+    return students.filter((s) => {
+      const meta = studentClassMeta(s);
+      if (filterClassId !== ALL_CLASSES && meta.classId !== filterClassId) {
+        return false;
+      }
+      if (!q) return true;
+      return studentName(s).toLowerCase().includes(q);
+    });
+  }, [students, filterClassId, nameQuery]);
+
+  const sortedStudents = useMemo(() => {
+    if (!sortKey) return filteredStudents;
+    const dir = sortDir === "asc" ? 1 : -1;
+    return [...filteredStudents].sort((a, b) => {
+      if (sortKey === "name") {
+        return dir * studentName(a).localeCompare(studentName(b), undefined, {
+          sensitivity: "base",
+        });
+      }
+      const ca = studentClassMeta(a);
+      const cb = studentClassMeta(b);
+      const byLevel = classSortIndex(ca.level) - classSortIndex(cb.level);
+      if (byLevel !== 0) return dir * byLevel;
+      const bySection = ca.section.localeCompare(cb.section, undefined, {
+        sensitivity: "base",
+      });
+      if (bySection !== 0) return dir * bySection;
+      return dir * ca.label.localeCompare(cb.label, undefined, {
+        sensitivity: "base",
+      });
+    });
+  }, [filteredStudents, sortKey, sortDir]);
+
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortKey(key);
+    setSortDir("asc");
+  }
+
+  function SortableHead({
+    label,
+    column,
+  }: {
+    label: string;
+    column: SortKey;
+  }) {
+    const active = sortKey === column;
+    const Icon = !active ? ArrowUpDown : sortDir === "asc" ? ArrowUp : ArrowDown;
+    return (
+      <TableHead>
+        <button
+          type="button"
+          onClick={() => toggleSort(column)}
+          className={cn(
+            "inline-flex items-center gap-1 font-medium hover:text-foreground",
+            active ? "text-foreground" : "text-muted-foreground",
+          )}
+        >
+          {label}
+          <Icon className="h-3.5 w-3.5" />
+        </button>
+      </TableHead>
+    );
+  }
 
   async function refresh() {
     await Promise.all([loadMeta(), loadStudents()]);
@@ -304,7 +442,13 @@ export default function StudentsPage() {
           <div className="flex flex-wrap items-end gap-2">
             <div className="space-y-1">
               <Label>Academic year</Label>
-              <Select value={filterYearId} onValueChange={setFilterYearId}>
+              <Select
+                value={filterYearId}
+                onValueChange={(v) => {
+                  setFilterYearId(v);
+                  setFilterClassId(ALL_CLASSES);
+                }}
+              >
                 <SelectTrigger className="w-48">
                   <SelectValue placeholder="Select year" />
                 </SelectTrigger>
@@ -317,6 +461,34 @@ export default function StudentsPage() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-1">
+              <Label>Class</Label>
+              <Select value={filterClassId} onValueChange={setFilterClassId}>
+                <SelectTrigger className="w-56">
+                  <SelectValue placeholder="All classes" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_CLASSES}>All classes</SelectItem>
+                  {classesForFilter.map((c) => (
+                    <SelectItem key={str(c.id)} value={str(c.id)}>
+                      {formatClassLabel(
+                        str(c.classLevel) || str(c.name),
+                        str(c.section) || null,
+                      )}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="min-w-[14rem] space-y-1 sm:max-w-xs">
+              <Label htmlFor="students-search">Search student</Label>
+              <Input
+                id="students-search"
+                value={nameQuery}
+                onChange={(e) => setNameQuery(e.target.value)}
+                placeholder="Search by name..."
+              />
             </div>
             <Button
               type="button"
@@ -622,39 +794,46 @@ export default function StudentsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Name</TableHead>
+                  <TableHead className="w-14">S. No.</TableHead>
+                  <SortableHead label="Name" column="name" />
+                  <SortableHead label="Class" column="class" />
                   <TableHead>Admission #</TableHead>
                   <TableHead>Email</TableHead>
-                  <TableHead>Class</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-muted-foreground">
+                    <TableCell colSpan={5} className="text-muted-foreground">
                       Loading...
                     </TableCell>
                   </TableRow>
                 ) : students.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-muted-foreground">
+                    <TableCell colSpan={5} className="text-muted-foreground">
                       {selectedYearName
                         ? `No students enrolled for ${selectedYearName}.`
                         : "No students yet."}
                     </TableCell>
                   </TableRow>
+                ) : sortedStudents.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-muted-foreground">
+                      No students match the current search or class filter.
+                    </TableCell>
+                  </TableRow>
                 ) : (
-                  students.map((s) => {
+                  sortedStudents.map((s, index) => {
                     const user = obj(s.user);
-                    const enrollments = arr(s.enrollments);
-                    const current = enrollments[0];
-                    const klass = current ? obj(current.class) : {};
-                    const detailHref = `/dashboard/school/students/${str(s.id)}`;
+                    const classMeta = studentClassMeta(s);
                     const editHref = filterYearId
                       ? `/dashboard/school/students/${str(s.id)}/edit?year=${encodeURIComponent(filterYearId)}`
                       : `/dashboard/school/students/${str(s.id)}/edit`;
                     return (
                       <TableRow key={str(s.id)}>
+                        <TableCell className="text-muted-foreground">
+                          {index + 1}
+                        </TableCell>
                         <TableCell className="font-medium">
                           <span className="inline-flex items-center gap-1.5">
                             <Link
@@ -665,24 +844,47 @@ export default function StudentsPage() {
                             >
                               <Pencil className="h-3.5 w-3.5" />
                             </Link>
-                            <Link
-                              href={detailHref}
-                              className="hover:underline"
+                            <button
+                              type="button"
+                              className="inline-flex rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                              title="View attendance"
+                              aria-label={`Attendance for ${str(user.name)}`}
+                              onClick={() =>
+                                setAttendanceTarget({
+                                  id: str(s.id),
+                                  name: str(user.name),
+                                  classId: classMeta.classId,
+                                })
+                              }
+                            >
+                              <CalendarDays className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              className="inline-flex rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                              title="View fees"
+                              aria-label={`Fees for ${str(user.name)}`}
+                              onClick={() =>
+                                setFeeTarget({
+                                  id: str(s.id),
+                                  name: str(user.name),
+                                })
+                              }
+                            >
+                              <Receipt className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              className="text-left hover:underline"
+                              onClick={() => setDetailStudentId(str(s.id))}
                             >
                               {str(user.name)}
-                            </Link>
+                            </button>
                           </span>
                         </TableCell>
+                        <TableCell>{classMeta.label || "—"}</TableCell>
                         <TableCell>{str(s.admissionNumber)}</TableCell>
                         <TableCell>{str(user.email)}</TableCell>
-                        <TableCell>
-                          {klass.classLevel || klass.name
-                            ? formatClassLabel(
-                                str(klass.classLevel || klass.name),
-                                str(klass.section) || null,
-                              )
-                            : "—"}
-                        </TableCell>
                       </TableRow>
                     );
                   })
@@ -691,6 +893,33 @@ export default function StudentsPage() {
             </Table>
           </CardContent>
         </Card>
+
+        <StudentDetailSheet
+          studentId={detailStudentId}
+          academicYearId={filterYearId || undefined}
+          open={detailStudentId != null}
+          onOpenChange={(open) => {
+            if (!open) setDetailStudentId(null);
+          }}
+        />
+        <StudentAttendanceSheet
+          studentId={attendanceTarget?.id ?? null}
+          studentName={attendanceTarget?.name}
+          classId={attendanceTarget?.classId || null}
+          open={attendanceTarget != null}
+          onOpenChange={(open) => {
+            if (!open) setAttendanceTarget(null);
+          }}
+        />
+        <StudentFeeSheet
+          studentId={feeTarget?.id ?? null}
+          studentName={feeTarget?.name}
+          academicYearId={filterYearId || null}
+          open={feeTarget != null}
+          onOpenChange={(open) => {
+            if (!open) setFeeTarget(null);
+          }}
+        />
       </div>
     </DashboardShell>
   );
