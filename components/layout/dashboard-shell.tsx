@@ -135,7 +135,7 @@ export function DashboardShell({
             Log out
           </Button>
         </aside>
-        <main className="flex-1 rounded-2xl border bg-card p-4 md:p-6">
+        <main className="min-w-0 flex-1 rounded-2xl border bg-card p-4 md:p-6">
           <div className="mb-4 flex items-center justify-between md:hidden">
             <div>
               <p className="font-semibold">{user.name}</p>
