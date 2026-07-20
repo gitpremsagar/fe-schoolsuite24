@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { LoadingPulseCard } from "@/components/ui/loading-pulse-card";
 import {
   Select,
   SelectContent,
@@ -57,11 +58,7 @@ function classLabel(s: Row): string {
 
 export default function StudentAttendancePage() {
   return (
-    <Suspense
-      fallback={
-        <p className="text-sm text-muted-foreground">Loading attendance...</p>
-      }
-    >
+    <Suspense fallback={<LoadingPulseCard />}>
       <StudentAttendancePageContent />
     </Suspense>
   );
@@ -339,7 +336,7 @@ function StudentAttendancePageContent() {
       {message ? <p className="text-sm text-green-600">{message}</p> : null}
 
       {loading ? (
-        <p className="text-sm text-muted-foreground">Loading register...</p>
+        <LoadingPulseCard />
       ) : students.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           {showAllClasses

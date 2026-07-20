@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Loader2 } from "lucide-react";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -42,6 +43,15 @@ function fmtDate(v: unknown): string {
   if (!s) return "—";
   const d = new Date(s);
   return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("en-IN");
+}
+
+function ValueLoader({ className }: { className?: string }) {
+  return (
+    <Loader2
+      className={className ?? "h-6 w-6 animate-spin text-muted-foreground"}
+      aria-label="Loading"
+    />
+  );
 }
 
 export default function BillingPage() {
@@ -95,7 +105,7 @@ export default function BillingPage() {
             <CardHeader>
               <CardDescription>Active enrollments</CardDescription>
               <CardTitle className="text-3xl">
-                {loading ? "—" : num(data?.activeEnrollments)}
+                {loading ? <ValueLoader /> : num(data?.activeEnrollments)}
               </CardTitle>
             </CardHeader>
           </Card>
@@ -103,9 +113,11 @@ export default function BillingPage() {
             <CardHeader>
               <CardDescription>Price per student</CardDescription>
               <CardTitle className="text-3xl">
-                {loading
-                  ? "—"
-                  : formatMoney(num(data?.pricePerStudent), currency)}
+                {loading ? (
+                  <ValueLoader />
+                ) : (
+                  formatMoney(num(data?.pricePerStudent), currency)
+                )}
               </CardTitle>
             </CardHeader>
           </Card>
@@ -113,7 +125,11 @@ export default function BillingPage() {
             <CardHeader>
               <CardDescription>Amount due</CardDescription>
               <CardTitle className="text-3xl">
-                {loading ? "—" : formatMoney(num(data?.dueAmount), currency)}
+                {loading ? (
+                  <ValueLoader />
+                ) : (
+                  formatMoney(num(data?.dueAmount), currency)
+                )}
               </CardTitle>
             </CardHeader>
           </Card>
@@ -126,23 +142,39 @@ export default function BillingPage() {
           <CardContent className="space-y-2 text-sm">
             <div className="flex items-center gap-2">
               <span className="text-muted-foreground">Status:</span>
-              <Badge>{str(subscription.status) || "—"}</Badge>
-              <Badge
-                variant={
-                  subscription.isAccessEnabled ? "default" : "destructive"
-                }
-              >
-                {subscription.isAccessEnabled ? "Access on" : "Access off"}
-              </Badge>
+              {loading ? (
+                <ValueLoader className="h-4 w-4 animate-spin text-muted-foreground" />
+              ) : (
+                <>
+                  <Badge>{str(subscription.status) || "—"}</Badge>
+                  <Badge
+                    variant={
+                      subscription.isAccessEnabled ? "default" : "destructive"
+                    }
+                  >
+                    {subscription.isAccessEnabled ? "Access on" : "Access off"}
+                  </Badge>
+                </>
+              )}
             </div>
-            <p>
+            <p className="flex items-center gap-2">
               <span className="text-muted-foreground">Trial ends:</span>{" "}
-              {fmtDate(subscription.trialEndsAt)}
+              {loading ? (
+                <ValueLoader className="h-4 w-4 animate-spin text-muted-foreground" />
+              ) : (
+                fmtDate(subscription.trialEndsAt)
+              )}
             </p>
-            <p>
+            <p className="flex items-center gap-2">
               <span className="text-muted-foreground">Current period:</span>{" "}
-              {fmtDate(subscription.currentPeriodStart)} –{" "}
-              {fmtDate(subscription.currentPeriodEnd)}
+              {loading ? (
+                <ValueLoader className="h-4 w-4 animate-spin text-muted-foreground" />
+              ) : (
+                <>
+                  {fmtDate(subscription.currentPeriodStart)} –{" "}
+                  {fmtDate(subscription.currentPeriodEnd)}
+                </>
+              )}
             </p>
           </CardContent>
         </Card>
@@ -165,8 +197,10 @@ export default function BillingPage() {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-muted-foreground">
-                      Loading...
+                    <TableCell colSpan={5}>
+                      <div className="flex items-center justify-center py-6">
+                        <ValueLoader />
+                      </div>
                     </TableCell>
                   </TableRow>
                 ) : payments.length === 0 ? (

@@ -13,6 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { LoadingPulseCard } from "@/components/ui/loading-pulse-card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -47,13 +48,11 @@ function StaffTable({
   title,
   description,
   rows,
-  loading,
   emptyLabel,
 }: {
   title: string;
   description: string;
   rows: Row[];
-  loading: boolean;
   emptyLabel: string;
 }) {
   return (
@@ -75,13 +74,7 @@ function StaffTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {loading ? (
-              <TableRow>
-                <TableCell colSpan={6} className="text-muted-foreground">
-                  Loading...
-                </TableCell>
-              </TableRow>
-            ) : rows.length === 0 ? (
+            {rows.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="text-muted-foreground">
                   {emptyLabel}
@@ -459,21 +452,25 @@ export default function StaffPage() {
           </Card>
         ) : null}
 
-        <StaffTable
-          title="Teachers"
-          description="Teaching staff who can mark class attendance."
-          rows={teachers}
-          loading={loading}
-          emptyLabel="No teachers yet."
-        />
+        {loading ? (
+          <LoadingPulseCard />
+        ) : (
+          <>
+            <StaffTable
+              title="Teachers"
+              description="Teaching staff who can mark class attendance."
+              rows={teachers}
+              emptyLabel="No teachers yet."
+            />
 
-        <StaffTable
-          title="Other staff"
-          description="Employees and non-teaching staff."
-          rows={otherStaff}
-          loading={loading}
-          emptyLabel="No other staff yet."
-        />
+            <StaffTable
+              title="Other staff"
+              description="Employees and non-teaching staff."
+              rows={otherStaff}
+              emptyLabel="No other staff yet."
+            />
+          </>
+        )}
       </div>
     </DashboardShell>
   );

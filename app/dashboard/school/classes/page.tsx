@@ -11,6 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { LoadingPulseCard } from "@/components/ui/loading-pulse-card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -357,35 +358,32 @@ export default function ClassesPage() {
           </div>
         </div>
 
-        <Card>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Class</TableHead>
-                  <TableHead>Section</TableHead>
-                  <TableHead>Monthly fee</TableHead>
-                  <TableHead>Year</TableHead>
-                  <TableHead>Students</TableHead>
-                  <TableHead>Class teacher</TableHead>
-                  <TableHead>Assign teacher</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
+        {loading ? (
+          <LoadingPulseCard />
+        ) : (
+          <Card>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={7} className="text-muted-foreground">
-                      Loading...
-                    </TableCell>
+                    <TableHead>Class</TableHead>
+                    <TableHead>Section</TableHead>
+                    <TableHead>Monthly fee</TableHead>
+                    <TableHead>Year</TableHead>
+                    <TableHead>Students</TableHead>
+                    <TableHead>Class teacher</TableHead>
+                    <TableHead>Assign teacher</TableHead>
                   </TableRow>
-                ) : classes.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={7} className="text-muted-foreground">
-                      No classes yet.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  classes.map((c) => {
+                </TableHeader>
+                <TableBody>
+                  {classes.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-muted-foreground">
+                        No classes yet.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    classes.map((c) => {
                     const year = obj(c.academicYear);
                     const count = obj(c._count);
                     const id = str(c.id);
@@ -493,11 +491,12 @@ export default function ClassesPage() {
                       </TableRow>
                     );
                   })
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </DashboardShell>
   );

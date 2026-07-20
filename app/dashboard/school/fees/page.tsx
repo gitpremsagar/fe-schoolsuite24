@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { LoadingPulseCard } from "@/components/ui/loading-pulse-card";
 import {
   Select,
   SelectContent,
@@ -109,7 +110,7 @@ export default function FeesPage() {
     <Suspense
       fallback={
         <DashboardShell allowedRoles={["ADMIN"]}>
-          <p className="text-sm text-muted-foreground">Loading fees...</p>
+          <LoadingPulseCard />
         </DashboardShell>
       }
     >
@@ -387,7 +388,7 @@ function FeesPageContent() {
           </p>
 
           {loading ? (
-            <p className="text-sm text-muted-foreground">Loading register...</p>
+            <LoadingPulseCard />
           ) : students.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               {selectedYearName

@@ -12,6 +12,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { LoadingPulseCard } from "@/components/ui/loading-pulse-card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -193,64 +194,62 @@ export default function AcademicYearsPage() {
           </Card>
         ) : null}
 
-        <Card>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Start</TableHead>
-                  <TableHead>End</TableHead>
-                  <TableHead>Current</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
+        {loading ? (
+          <LoadingPulseCard />
+        ) : (
+          <Card>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={5} className="text-muted-foreground">
-                      Loading...
-                    </TableCell>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Start</TableHead>
+                    <TableHead>End</TableHead>
+                    <TableHead>Current</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
                   </TableRow>
-                ) : years.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-muted-foreground">
-                      No academic years yet.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  years.map((y) => (
-                    <TableRow key={str(y.id)}>
-                      <TableCell className="font-medium">
-                        {str(y.name)}
-                      </TableCell>
-                      <TableCell>{fmtDate(y.startDate)}</TableCell>
-                      <TableCell>{fmtDate(y.endDate)}</TableCell>
-                      <TableCell>
-                        {y.isCurrent ? (
-                          <Badge>Current</Badge>
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {y.isCurrent ? null : (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setCurrent(str(y.id))}
-                          >
-                            Set current
-                          </Button>
-                        )}
+                </TableHeader>
+                <TableBody>
+                  {years.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-muted-foreground">
+                        No academic years yet.
                       </TableCell>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+                  ) : (
+                    years.map((y) => (
+                      <TableRow key={str(y.id)}>
+                        <TableCell className="font-medium">
+                          {str(y.name)}
+                        </TableCell>
+                        <TableCell>{fmtDate(y.startDate)}</TableCell>
+                        <TableCell>{fmtDate(y.endDate)}</TableCell>
+                        <TableCell>
+                          {y.isCurrent ? (
+                            <Badge>Current</Badge>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {y.isCurrent ? null : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setCurrent(str(y.id))}
+                            >
+                              Set current
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </DashboardShell>
   );

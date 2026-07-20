@@ -48,6 +48,7 @@ import { cn } from "@/lib/utils";
 import { StudentDetailSheet } from "@/components/students/student-detail-sheet";
 import { StudentAttendanceSheet } from "@/components/students/student-attendance-sheet";
 import { StudentFeeSheet } from "@/components/students/student-fee-sheet";
+import { LoadingPulseCard } from "@/components/ui/loading-pulse-card";
 
 type Row = Record<string, unknown>;
 type SortKey = "name" | "class";
@@ -789,110 +790,108 @@ export default function StudentsPage() {
           </Card>
         ) : null}
 
-        <Card>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-14">S. No.</TableHead>
-                  <SortableHead label="Name" column="name" />
-                  <SortableHead label="Class" column="class" />
-                  <TableHead>Admission #</TableHead>
-                  <TableHead>Email</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
+        {loading ? (
+          <LoadingPulseCard />
+        ) : (
+          <Card>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={5} className="text-muted-foreground">
-                      Loading...
-                    </TableCell>
+                    <TableHead className="w-14">S. No.</TableHead>
+                    <SortableHead label="Name" column="name" />
+                    <SortableHead label="Class" column="class" />
+                    <TableHead>Admission #</TableHead>
+                    <TableHead>Email</TableHead>
                   </TableRow>
-                ) : students.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-muted-foreground">
-                      {selectedYearName
-                        ? `No students enrolled for ${selectedYearName}.`
-                        : "No students yet."}
-                    </TableCell>
-                  </TableRow>
-                ) : sortedStudents.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-muted-foreground">
-                      No students match the current search or class filter.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  sortedStudents.map((s, index) => {
-                    const user = obj(s.user);
-                    const classMeta = studentClassMeta(s);
-                    const editHref = filterYearId
-                      ? `/dashboard/school/students/${str(s.id)}/edit?year=${encodeURIComponent(filterYearId)}`
-                      : `/dashboard/school/students/${str(s.id)}/edit`;
-                    return (
-                      <TableRow key={str(s.id)}>
-                        <TableCell className="text-muted-foreground">
-                          {index + 1}
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          <span className="inline-flex items-center gap-1.5">
-                            <Link
-                              href={editHref}
-                              className="inline-flex rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                              title="Edit student"
-                              aria-label={`Edit ${str(user.name)}`}
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Link>
-                            <button
-                              type="button"
-                              className="inline-flex rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                              title="View attendance"
-                              aria-label={`Attendance for ${str(user.name)}`}
-                              onClick={() =>
-                                setAttendanceTarget({
-                                  id: str(s.id),
-                                  name: str(user.name),
-                                  classId: classMeta.classId,
-                                })
-                              }
-                            >
-                              <CalendarDays className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              className="inline-flex rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                              title="View fees"
-                              aria-label={`Fees for ${str(user.name)}`}
-                              onClick={() =>
-                                setFeeTarget({
-                                  id: str(s.id),
-                                  name: str(user.name),
-                                })
-                              }
-                            >
-                              <Receipt className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              className="text-left hover:underline"
-                              onClick={() => setDetailStudentId(str(s.id))}
-                            >
-                              {str(user.name)}
-                            </button>
-                          </span>
-                        </TableCell>
-                        <TableCell>{classMeta.label || "—"}</TableCell>
-                        <TableCell>{str(s.admissionNumber)}</TableCell>
-                        <TableCell>{str(user.email)}</TableCell>
-                      </TableRow>
-                    );
-                  })
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+                </TableHeader>
+                <TableBody>
+                  {students.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-muted-foreground">
+                        {selectedYearName
+                          ? `No students enrolled for ${selectedYearName}.`
+                          : "No students yet."}
+                      </TableCell>
+                    </TableRow>
+                  ) : sortedStudents.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-muted-foreground">
+                        No students match the current search or class filter.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    sortedStudents.map((s, index) => {
+                      const user = obj(s.user);
+                      const classMeta = studentClassMeta(s);
+                      const editHref = filterYearId
+                        ? `/dashboard/school/students/${str(s.id)}/edit?year=${encodeURIComponent(filterYearId)}`
+                        : `/dashboard/school/students/${str(s.id)}/edit`;
+                      return (
+                        <TableRow key={str(s.id)}>
+                          <TableCell className="text-muted-foreground">
+                            {index + 1}
+                          </TableCell>
+                          <TableCell className="font-medium">
+                            <span className="inline-flex items-center gap-1.5">
+                              <Link
+                                href={editHref}
+                                className="inline-flex rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                                title="Edit student"
+                                aria-label={`Edit ${str(user.name)}`}
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Link>
+                              <button
+                                type="button"
+                                className="inline-flex rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                                title="View attendance"
+                                aria-label={`Attendance for ${str(user.name)}`}
+                                onClick={() =>
+                                  setAttendanceTarget({
+                                    id: str(s.id),
+                                    name: str(user.name),
+                                    classId: classMeta.classId,
+                                  })
+                                }
+                              >
+                                <CalendarDays className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                className="inline-flex rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                                title="View fees"
+                                aria-label={`Fees for ${str(user.name)}`}
+                                onClick={() =>
+                                  setFeeTarget({
+                                    id: str(s.id),
+                                    name: str(user.name),
+                                  })
+                                }
+                              >
+                                <Receipt className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                className="text-left hover:underline"
+                                onClick={() => setDetailStudentId(str(s.id))}
+                              >
+                                {str(user.name)}
+                              </button>
+                            </span>
+                          </TableCell>
+                          <TableCell>{classMeta.label || "—"}</TableCell>
+                          <TableCell>{str(s.admissionNumber)}</TableCell>
+                          <TableCell>{str(user.email)}</TableCell>
+                        </TableRow>
+                      );
+                    })
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        )}
 
         <StudentDetailSheet
           studentId={detailStudentId}

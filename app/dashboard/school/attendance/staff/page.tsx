@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { LoadingPulseCard } from "@/components/ui/loading-pulse-card";
 import {
   Select,
   SelectContent,
@@ -440,7 +441,7 @@ export default function StaffAttendancePage() {
       {message ? <p className="text-sm text-green-600">{message}</p> : null}
 
       {loading ? (
-        <p className="text-sm text-muted-foreground">Loading register...</p>
+        <LoadingPulseCard />
       ) : staff.length === 0 ? (
         <p className="text-sm text-muted-foreground">No staff members yet.</p>
       ) : (
