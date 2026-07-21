@@ -63,6 +63,13 @@ function dateKey(year: number, month: number, day: number) {
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
+function isSundayKey(key: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key);
+  if (!m) return false;
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  return d.getUTCDay() === 0;
+}
+
 function fmtTime(v: string | null | undefined): string {
   if (!v) return "";
   const d = new Date(v);
@@ -108,6 +115,7 @@ export default function StaffAttendancePage() {
   const [year, setYear] = useState(initial.year);
   const [month, setMonth] = useState(initial.month);
   const [days, setDays] = useState<number[]>([]);
+  const [holidaySet, setHolidaySet] = useState<Set<string>>(() => new Set());
   const [staff, setStaff] = useState<Row[]>([]);
   /** marks[staffProfileId][day] */
   const [marks, setMarks] = useState<
@@ -160,6 +168,7 @@ export default function StaffAttendancePage() {
     try {
       const res = await attendanceApi.staffMonth(year, month);
       setDays(res.days);
+      setHolidaySet(new Set(res.holidays ?? []));
       setStaff(res.staff);
       const nextMarks: Record<string, Record<string, Status | null>> = {};
       const nextPunches: Record<
@@ -197,8 +206,13 @@ export default function StaffAttendancePage() {
     return [y - 1, y, y + 1];
   }, []);
 
+  function isHolidayDay(day: number) {
+    const key = dateKey(year, month, day);
+    return holidaySet.has(key) || isSundayKey(key);
+  }
+
   function openCell(staffId: string, staffName: string, day: number) {
-    if (actionSaving) return;
+    if (actionSaving || isHolidayDay(day)) return;
     const key = String(day);
     const punch = punches[staffId]?.[key];
     const now = nowTimeInput();
@@ -434,7 +448,8 @@ export default function StaffAttendancePage() {
       <p className="text-sm text-muted-foreground">
         {monthLabel(year, month)} · Click a cell to punch in, punch out, mark
         absent, or undo. Changes save immediately. IP = punched in, awaiting
-        punch out.
+        punch out. Highlighted columns are holidays (including Sundays) and
+        cannot be marked.
       </p>
 
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
@@ -455,14 +470,21 @@ export default function StaffAttendancePage() {
                 <th className="sticky left-16 z-10 bg-muted px-3 py-2 text-left font-medium">
                   Staff
                 </th>
-                {days.map((day) => (
-                  <th
-                    key={day}
-                    className="min-w-8 px-1 py-2 text-center font-medium"
-                  >
-                    {day}
-                  </th>
-                ))}
+                {days.map((day) => {
+                  const holiday = isHolidayDay(day);
+                  return (
+                    <th
+                      key={day}
+                      title={holiday ? "Holiday" : undefined}
+                      className={cn(
+                        "min-w-8 px-1 py-2 text-center font-medium",
+                        holiday && "bg-amber-100 text-amber-900",
+                      )}
+                    >
+                      {day}
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
@@ -484,40 +506,62 @@ export default function StaffAttendancePage() {
                       const punch = punches[id]?.[String(day)];
                       const hasPunchIn = Boolean(punch?.punchInAt);
                       const hasPunchOut = Boolean(punch?.punchOutAt);
+                      const holiday = isHolidayDay(day);
                       const inProgress =
-                        status === "PRESENT" && hasPunchIn && !hasPunchOut;
+                        !holiday &&
+                        status === "PRESENT" &&
+                        hasPunchIn &&
+                        !hasPunchOut;
                       const complete =
-                        status === "PRESENT" && hasPunchIn && hasPunchOut;
-                      const title = inProgress
-                        ? `In progress · In ${fmtTime(punch?.punchInAt)} · No punch out`
-                        : complete
-                          ? `In ${fmtTime(punch?.punchInAt)} · Out ${fmtTime(punch?.punchOutAt)}`
-                          : status === "ABSENT"
-                            ? "Absent"
-                            : "Click to mark";
+                        !holiday &&
+                        status === "PRESENT" &&
+                        hasPunchIn &&
+                        hasPunchOut;
+                      const title = holiday
+                        ? "Holiday"
+                        : inProgress
+                          ? `In progress · In ${fmtTime(punch?.punchInAt)} · No punch out`
+                          : complete
+                            ? `In ${fmtTime(punch?.punchInAt)} · Out ${fmtTime(punch?.punchOutAt)}`
+                            : status === "ABSENT"
+                              ? "Absent"
+                              : "Click to mark";
                       return (
-                        <td key={day} className="p-0.5 text-center">
+                        <td
+                          key={day}
+                          className={cn(
+                            "p-0.5 text-center",
+                            holiday && "bg-amber-50",
+                          )}
+                        >
                           <button
                             type="button"
+                            disabled={holiday}
                             title={title}
                             onClick={() => openCell(id, str(s.name), day)}
                             className={cn(
                               "mx-auto flex h-7 min-w-7 items-center justify-center rounded px-0.5 text-[10px] font-semibold",
+                              holiday &&
+                                "cursor-not-allowed bg-amber-100/80 text-amber-800/70",
                               complete && "bg-emerald-100 text-emerald-800",
                               inProgress && "bg-amber-100 text-amber-900",
-                              status === "ABSENT" &&
+                              !holiday &&
+                                status === "ABSENT" &&
                                 "bg-red-100 text-red-800",
-                              status == null &&
+                              !holiday &&
+                                status == null &&
                                 "bg-muted/40 text-muted-foreground hover:bg-muted",
                             )}
                           >
-                            {inProgress
-                              ? "IP"
-                              : complete
-                                ? "P"
-                                : status === "ABSENT"
-                                  ? "A"
-                                  : "·"}
+                            {holiday
+                              ? "H"
+                              : inProgress
+                                ? "IP"
+                                : complete
+                                  ? "P"
+                                  : status === "ABSENT"
+                                    ? "A"
+                                    : "·"}
                           </button>
                         </td>
                       );

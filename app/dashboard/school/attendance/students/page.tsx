@@ -43,6 +43,14 @@ function dateKey(year: number, month: number, day: number) {
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
+/** UTC Sunday check for YYYY-MM-DD (fallback if API omits holidays). */
+function isSundayKey(key: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key);
+  if (!m) return false;
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  return d.getUTCDay() === 0;
+}
+
 function cycleStatus(current: Status | null): Status | null {
   if (current == null) return "PRESENT";
   if (current === "PRESENT") return "ABSENT";
@@ -79,6 +87,7 @@ function StudentAttendancePageContent() {
   const [year, setYear] = useState(initial.year);
   const [month, setMonth] = useState(initial.month);
   const [days, setDays] = useState<number[]>([]);
+  const [holidaySet, setHolidaySet] = useState<Set<string>>(() => new Set());
   const [students, setStudents] = useState<Row[]>([]);
   /** marks[studentProfileId][day] */
   const [marks, setMarks] = useState<
@@ -131,6 +140,7 @@ function StudentAttendancePageContent() {
         month,
       );
       setDays(res.days);
+      setHolidaySet(new Set(res.holidays ?? []));
       setStudents(res.students);
       const next: Record<string, Record<string, Status | null>> = {};
       for (const s of res.students) {
@@ -175,7 +185,13 @@ function StudentAttendancePageContent() {
     return students.filter((s) => str(s.name).toLowerCase().includes(q));
   }, [students, nameQuery, focusStudentId]);
 
+  function isHolidayDay(day: number) {
+    const key = dateKey(year, month, day);
+    return holidaySet.has(key) || isSundayKey(key);
+  }
+
   function toggleCell(studentId: string, day: number) {
+    if (isHolidayDay(day)) return;
     setMarks((prev) => {
       const row = { ...(prev[studentId] ?? {}) };
       const key = String(day);
@@ -203,14 +219,15 @@ function StudentAttendancePageContent() {
           : classId;
         if (!studentClassId || studentClassId === ALL_CLASSES) continue;
         for (const [day, status] of Object.entries(dayMap)) {
-          if (status === "PRESENT" || status === "ABSENT") {
-            records.push({
-              studentProfileId: studentId,
-              date: dateKey(year, month, Number(day)),
-              status,
-              classId: studentClassId,
-            });
-          }
+          if (status !== "PRESENT" && status !== "ABSENT") continue;
+          const dayNum = Number(day);
+          if (isHolidayDay(dayNum)) continue;
+          records.push({
+            studentProfileId: studentId,
+            date: dateKey(year, month, dayNum),
+            status,
+            classId: studentClassId,
+          });
         }
       }
       if (records.length === 0) {
@@ -329,7 +346,8 @@ function StudentAttendancePageContent() {
       <p className="text-sm text-muted-foreground">
         {monthLabel(year, month)}
         {showAllClasses ? " · All students" : ""} · Click a cell to cycle
-        Present → Absent → blank, then save.
+        Present → Absent → blank, then save. Highlighted columns are holidays
+        (including Sundays) and cannot be marked.
       </p>
 
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
@@ -373,14 +391,21 @@ function StudentAttendancePageContent() {
                 >
                   Student
                 </th>
-                {days.map((day) => (
-                  <th
-                    key={day}
-                    className="min-w-8 px-1 py-2 text-center font-medium"
-                  >
-                    {day}
-                  </th>
-                ))}
+                {days.map((day) => {
+                  const holiday = isHolidayDay(day);
+                  return (
+                    <th
+                      key={day}
+                      title={holiday ? "Holiday" : undefined}
+                      className={cn(
+                        "min-w-8 px-1 py-2 text-center font-medium",
+                        holiday && "bg-amber-100 text-amber-900",
+                      )}
+                    >
+                      {day}
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
@@ -411,27 +436,50 @@ function StudentAttendancePageContent() {
                     </td>
                     {days.map((day) => {
                       const status = marks[id]?.[String(day)] ?? null;
+                      const holiday = isHolidayDay(day);
                       return (
-                        <td key={day} className="p-0.5 text-center">
+                        <td
+                          key={day}
+                          className={cn(
+                            "p-0.5 text-center",
+                            holiday && "bg-amber-50",
+                          )}
+                        >
                           <button
                             type="button"
-                            title="Click to change"
+                            disabled={holiday}
+                            title={
+                              holiday
+                                ? "Holiday"
+                                : status === "PRESENT"
+                                  ? "Present"
+                                  : status === "ABSENT"
+                                    ? "Absent"
+                                    : "Click to change"
+                            }
                             onClick={() => toggleCell(id, day)}
                             className={cn(
                               "flex h-7 w-7 items-center justify-center rounded text-[11px] font-semibold",
-                              status === "PRESENT" &&
+                              holiday &&
+                                "cursor-not-allowed bg-amber-100/80 text-amber-800/70",
+                              !holiday &&
+                                status === "PRESENT" &&
                                 "bg-emerald-100 text-emerald-800",
-                              status === "ABSENT" &&
+                              !holiday &&
+                                status === "ABSENT" &&
                                 "bg-red-100 text-red-800",
-                              status == null &&
+                              !holiday &&
+                                status == null &&
                                 "bg-muted/40 text-muted-foreground hover:bg-muted",
                             )}
                           >
-                            {status === "PRESENT"
-                              ? "P"
-                              : status === "ABSENT"
-                                ? "A"
-                                : "·"}
+                            {holiday
+                              ? "H"
+                              : status === "PRESENT"
+                                ? "P"
+                                : status === "ABSENT"
+                                  ? "A"
+                                  : "·"}
                           </button>
                         </td>
                       );

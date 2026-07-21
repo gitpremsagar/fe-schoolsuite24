@@ -118,6 +118,29 @@ export const schoolApi = {
     upsertPayment: (body: Record<string, unknown>) =>
       apiFetch("/fees/payments", { method: "PUT", body }),
   },
+  holidays: {
+    list: (year: number, month: number) =>
+      apiFetch<{
+        year: number;
+        month: number;
+        holidays: Array<{
+          id: string;
+          date: string;
+          name: string | null;
+          notes: string | null;
+          createdBy: { id: string; name: string; email: string } | null;
+          createdAt: string;
+          updatedAt: string;
+        }>;
+      }>(`/holidays?year=${year}&month=${month}`),
+    create: (body: { date: string; name?: string | null; notes?: string | null }) =>
+      apiFetch<{ holiday: Record<string, unknown> }>("/holidays", {
+        method: "POST",
+        body,
+      }),
+    remove: (id: string) =>
+      apiFetch(`/holidays/${id}`, { method: "DELETE" }),
+  },
 };
 
 export const attendanceApi = {
@@ -136,6 +159,7 @@ export const attendanceApi = {
       month: number;
       daysInMonth: number;
       days: number[];
+      holidays: string[];
       classId: string | null;
       students: Array<Record<string, unknown>>;
     }>(`/attendance/students/month?${params.toString()}`);
@@ -169,6 +193,7 @@ export const attendanceApi = {
       month: number;
       daysInMonth: number;
       days: number[];
+      holidays: string[];
       staff: Array<Record<string, unknown>>;
     }>(`/attendance/staff/month?year=${year}&month=${month}`),
   saveStaffDay: (body: {

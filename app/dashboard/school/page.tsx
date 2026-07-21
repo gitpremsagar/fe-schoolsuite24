@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Loader2 } from "lucide-react";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -25,6 +26,15 @@ function obj(v: unknown): Row {
 }
 function str(v: unknown): string {
   return v == null ? "" : String(v);
+}
+
+function ValueLoader({ className }: { className?: string }) {
+  return (
+    <Loader2
+      className={className ?? "h-6 w-6 animate-spin text-muted-foreground"}
+      aria-label="Loading"
+    />
+  );
 }
 
 export default function SchoolDashboardPage() {
@@ -87,7 +97,11 @@ export default function SchoolDashboardPage() {
               <CardHeader>
                 <CardDescription>{c.label}</CardDescription>
                 <CardTitle className="text-3xl">
-                  {loading ? "—" : c.value.toLocaleString("en-IN")}
+                  {loading ? (
+                    <ValueLoader />
+                  ) : (
+                    c.value.toLocaleString("en-IN")
+                  )}
                 </CardTitle>
               </CardHeader>
             </Card>
@@ -104,20 +118,36 @@ export default function SchoolDashboardPage() {
           <CardContent className="space-y-2 text-sm">
             <div className="flex items-center gap-2">
               <span className="text-muted-foreground">Status:</span>
-              <Badge>{str(subscription.status) || "—"}</Badge>
-              <Badge
-                variant={subscription.isAccessEnabled ? "default" : "destructive"}
-              >
-                {subscription.isAccessEnabled ? "Access on" : "Access off"}
-              </Badge>
+              {loading ? (
+                <ValueLoader className="h-4 w-4 animate-spin text-muted-foreground" />
+              ) : (
+                <>
+                  <Badge>{str(subscription.status) || "—"}</Badge>
+                  <Badge
+                    variant={
+                      subscription.isAccessEnabled ? "default" : "destructive"
+                    }
+                  >
+                    {subscription.isAccessEnabled ? "Access on" : "Access off"}
+                  </Badge>
+                </>
+              )}
             </div>
-            <p>
+            <p className="flex items-center gap-2">
               <span className="text-muted-foreground">Price per student:</span>{" "}
-              {formatMoney(num(subscription.pricePerStudent))}
+              {loading ? (
+                <ValueLoader className="h-4 w-4 animate-spin text-muted-foreground" />
+              ) : (
+                formatMoney(num(subscription.pricePerStudent))
+              )}
             </p>
-            <p>
+            <p className="flex items-center gap-2">
               <span className="text-muted-foreground">Amount due:</span>{" "}
-              {formatMoney(num(data?.dueAmount))}
+              {loading ? (
+                <ValueLoader className="h-4 w-4 animate-spin text-muted-foreground" />
+              ) : (
+                formatMoney(num(data?.dueAmount))
+              )}
             </p>
           </CardContent>
         </Card>

@@ -14,6 +14,10 @@ const tabs = [
     href: "/dashboard/school/attendance/staff",
     label: "Staff attendance",
   },
+  {
+    href: "/dashboard/school/attendance/holidays",
+    label: "Holidays",
+  },
 ] as const;
 
 export default function AttendanceLayout({

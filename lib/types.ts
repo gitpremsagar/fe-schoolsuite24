@@ -17,6 +17,8 @@ export type PublicUser = {
 
 export type AuthResponse = {
   accessToken: string;
+  /** Present for mobile clients; web continues to use the httpOnly cookie. */
+  refreshToken?: string;
   user: PublicUser;
   school?: { id: string; name: string };
 };
