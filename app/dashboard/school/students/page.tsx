@@ -10,6 +10,7 @@ import {
   CalendarDays,
   Pencil,
   Receipt,
+  Trash2,
 } from "lucide-react";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Button } from "@/components/ui/button";
@@ -20,6 +21,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -150,6 +159,12 @@ export default function StudentsPage() {
     id: string;
     name: string;
   } | null>(null);
+  const [purgeTarget, setPurgeTarget] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [adminPassword, setAdminPassword] = useState("");
+  const [purging, setPurging] = useState(false);
 
   const handleErr = useCallback(
     (err: unknown, fallback: string) => {
@@ -302,6 +317,30 @@ export default function StudentsPage() {
 
   async function refresh() {
     await Promise.all([loadMeta(), loadStudents()]);
+  }
+
+  async function onPurgeStudent(e: React.FormEvent) {
+    e.preventDefault();
+    if (!purgeTarget || !adminPassword.trim()) {
+      setError("Enter your admin password to permanently delete.");
+      return;
+    }
+    const deletedName = purgeTarget.name || "Student";
+    const deletedId = purgeTarget.id;
+    setPurging(true);
+    setError("");
+    setMessage("");
+    try {
+      await schoolApi.students.purge(deletedId, adminPassword);
+      setPurgeTarget(null);
+      setAdminPassword("");
+      setMessage(`${deletedName} permanently deleted.`);
+      await loadStudents();
+    } catch (err) {
+      handleErr(err, "Failed to permanently delete student");
+    } finally {
+      setPurging(false);
+    }
   }
 
   async function onImportExcel(file: File) {
@@ -873,6 +912,20 @@ export default function StudentsPage() {
                               </button>
                               <button
                                 type="button"
+                                className="inline-flex rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-destructive"
+                                title="Delete student permanently"
+                                aria-label={`Delete ${str(user.name)}`}
+                                onClick={() =>
+                                  setPurgeTarget({
+                                    id: str(s.id),
+                                    name: str(user.name),
+                                  })
+                                }
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
                                 className="text-left hover:underline"
                                 onClick={() => setDetailStudentId(str(s.id))}
                               >
@@ -919,6 +972,56 @@ export default function StudentsPage() {
             if (!open) setFeeTarget(null);
           }}
         />
+
+        <Dialog
+          open={purgeTarget != null}
+          onOpenChange={(open) => {
+            if (!open) {
+              setPurgeTarget(null);
+              setAdminPassword("");
+            }
+          }}
+        >
+          <DialogContent>
+            <form onSubmit={onPurgeStudent}>
+              <DialogHeader>
+                <DialogTitle>Permanently delete student?</DialogTitle>
+                <DialogDescription>
+                  This removes {purgeTarget?.name || "this student"}, their
+                  account, enrollments, attendance, and fee records forever.
+                  Enter your admin password to confirm.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-2 py-4">
+                <Label htmlFor="admin-password">Your admin password</Label>
+                <Input
+                  id="admin-password"
+                  type="password"
+                  autoComplete="current-password"
+                  value={adminPassword}
+                  onChange={(e) => setAdminPassword(e.target.value)}
+                  required
+                />
+              </div>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={purging}
+                  onClick={() => {
+                    setPurgeTarget(null);
+                    setAdminPassword("");
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" variant="destructive" disabled={purging}>
+                  {purging ? "Deleting..." : "Delete permanently"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
     </DashboardShell>
   );

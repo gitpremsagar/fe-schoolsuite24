@@ -69,6 +69,11 @@ export const schoolApi = {
       apiFetch(`/students/${id}`, { method: "PATCH", body }),
     enroll: (id: string, body: Record<string, unknown>) =>
       apiFetch(`/students/${id}/enrollments`, { method: "POST", body }),
+    purge: (id: string, password: string) =>
+      apiFetch(`/students/${id}/purge`, {
+        method: "POST",
+        body: { password },
+      }),
     me: () => apiFetch<{ student: Record<string, unknown> }>("/students/me"),
   },
   staff: {

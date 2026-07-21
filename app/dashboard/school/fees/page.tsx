@@ -2,7 +2,9 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { ArrowDown, ArrowUp, ArrowUpDown, Pencil } from "lucide-react";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
+import { StudentEditSheet } from "@/components/students/student-edit-sheet";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -15,6 +17,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LoadingPulseCard } from "@/components/ui/loading-pulse-card";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -24,7 +27,7 @@ import {
 } from "@/components/ui/select";
 import { schoolApi } from "@/lib/api/school";
 import { errorMessage, isSubscriptionInactive } from "@/lib/api/subscription";
-import { formatClassLabel } from "@/lib/class-levels";
+import { CLASS_LEVELS, formatClassLabel } from "@/lib/class-levels";
 import { cn } from "@/lib/utils";
 
 type FeeStatus = "PAID" | "PARTIAL" | "UNPAID" | "WAIVED";
@@ -35,6 +38,7 @@ type MonthCell = {
   status: FeeStatus;
   amountDue: number | null;
   amountPaid: number;
+  feeAmount?: number | null;
   paidAt: string | null;
   notes: string | null;
   paymentId: string | null;
@@ -43,6 +47,8 @@ type MonthCell = {
   createdAt: string | null;
   updatedAt: string | null;
 };
+type SortKey = "name" | "class";
+type SortDir = "asc" | "desc";
 
 const ALL_CLASSES = "__all__";
 
@@ -101,19 +107,113 @@ function statusLetter(status: FeeStatus): string {
   }
 }
 
+/** Compact day/month for register cells (avoids timezone drift on date-only ISO). */
+function formatPaidAtShort(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const months = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+  ];
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (dateOnly) {
+    const day = Number(dateOnly[3]);
+    const monthName = months[Number(dateOnly[2]) - 1];
+    if (!monthName || !Number.isFinite(day)) return null;
+    return `${day}/${monthName}`;
+  }
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return `${d.getDate()}/${months[d.getMonth()]}`;
+}
+
+function formatPaidAtLong(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const months = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+  ];
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (dateOnly) {
+    const day = Number(dateOnly[3]);
+    const monthName = months[Number(dateOnly[2]) - 1];
+    const year = dateOnly[1];
+    if (!monthName || !Number.isFinite(day)) return "—";
+    return `${day} ${monthName} ${year}`;
+  }
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+}
+
 function statusTitle(cell: MonthCell): string {
-  const due =
-    cell.amountDue != null ? `Due ${cell.amountDue}` : "Fee not set";
-  if (cell.status === "UNPAID") return `Unpaid · ${due}`;
-  if (cell.status === "WAIVED") return `Waived · ${due}`;
+  const feeValue = feeAmountOf(cell);
+  const fee = feeValue != null ? `Fee ${feeValue}` : "Fee not set";
+  const balance = remainingDue(cell);
+  const dueLabel =
+    balance == null ? fee : `Due ${balance}${feeValue != null ? ` · ${fee}` : ""}`;
+  if (cell.status === "UNPAID") return `Unpaid · ${dueLabel}`;
+  if (cell.status === "WAIVED") return `Waived · ${dueLabel}`;
   if (cell.status === "PARTIAL") {
-    return `Partial · Paid ${cell.amountPaid} · ${due}${
+    return `Partial · Paid ${cell.amountPaid} · ${dueLabel}${
       cell.paidAt ? ` · ${toDateInput(cell.paidAt)}` : ""
     }`;
   }
-  return `Paid ${cell.amountPaid} · ${due}${
+  return `Paid ${cell.amountPaid} · ${dueLabel}${
     cell.paidAt ? ` · ${toDateInput(cell.paidAt)}` : ""
   }`;
+}
+
+/** Fee amount for a cell (class fee, or paid + remaining due). */
+function feeAmountOf(cell: {
+  status: FeeStatus;
+  amountDue: number | null;
+  amountPaid: number;
+  feeAmount?: number | null;
+}): number | null {
+  if (cell.feeAmount != null) return cell.feeAmount;
+  if (cell.amountDue == null) return null;
+  if (cell.status === "PAID" || cell.status === "WAIVED") {
+    return cell.amountPaid > 0 ? cell.amountPaid : cell.amountDue;
+  }
+  return cell.amountPaid + cell.amountDue;
+}
+
+/** Outstanding balance stored as amountDue (0 when fully paid or waived). */
+function remainingDue(cell: {
+  status: FeeStatus;
+  amountDue: number | null;
+  amountPaid: number;
+  feeAmount?: number | null;
+}): number | null {
+  if (cell.status === "PAID" || cell.status === "WAIVED") return 0;
+  if (cell.amountDue == null) return null;
+  return Math.max(0, cell.amountDue);
+}
+
+function statusFromAmounts(fee: number, paid: number): FeeStatus {
+  if (paid <= 0) return "UNPAID";
+  if (paid >= fee) return "PAID";
+  return "PARTIAL";
 }
 
 function classLabel(s: Row): string {
@@ -123,12 +223,50 @@ function classLabel(s: Row): string {
   );
 }
 
+function classSortIndex(level: string): number {
+  const idx = (CLASS_LEVELS as readonly string[]).indexOf(level);
+  return idx >= 0 ? idx : CLASS_LEVELS.length;
+}
+
+function statusLabel(status: FeeStatus): string {
+  switch (status) {
+    case "PAID":
+      return "Paid";
+    case "PARTIAL":
+      return "Partial";
+    case "WAIVED":
+      return "Waived";
+    default:
+      return "Unpaid";
+  }
+}
+
+function statusBadgeClass(status: FeeStatus): string {
+  switch (status) {
+    case "PAID":
+      return "border-transparent bg-emerald-100 text-emerald-800";
+    case "PARTIAL":
+      return "border-transparent bg-amber-100 text-amber-800";
+    case "WAIVED":
+      return "border-transparent bg-sky-100 text-sky-800";
+    default:
+      return "border-transparent bg-muted text-muted-foreground";
+  }
+}
+
 type Editor = {
   studentProfileId: string;
   studentName: string;
   year: number;
   month: number;
   key: string;
+  mode: "view" | "edit";
+  currentStatus: FeeStatus;
+  feeAmount: number | null;
+  amountDue: number | null;
+  amountPaid: number;
+  paidAt: string | null;
+  notes: string | null;
   createdBy: AuditUser | null;
   updatedBy: AuditUser | null;
   createdAt: string | null;
@@ -179,6 +317,9 @@ function FeesPageContent() {
   const [editPaidAt, setEditPaidAt] = useState(todayInput());
   const [editNotes, setEditNotes] = useState("");
   const [editError, setEditError] = useState("");
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [editStudentId, setEditStudentId] = useState<string | null>(null);
 
   const handleErr = useCallback(
     (err: unknown, fallback: string) => {
@@ -254,32 +395,153 @@ function FeesPageContent() {
     });
   }, [students, filterClassId, nameQuery, focusStudentId]);
 
+  const sortedStudents = useMemo(() => {
+    if (!sortKey) return filteredStudents;
+    const dir = sortDir === "asc" ? 1 : -1;
+    return [...filteredStudents].sort((a, b) => {
+      if (sortKey === "name") {
+        return dir * str(a.name).localeCompare(str(b.name), undefined, {
+          sensitivity: "base",
+        });
+      }
+      const byLevel =
+        classSortIndex(str(a.classLevel)) - classSortIndex(str(b.classLevel));
+      if (byLevel !== 0) return dir * byLevel;
+      const bySection = str(a.section).localeCompare(str(b.section), undefined, {
+        sensitivity: "base",
+      });
+      if (bySection !== 0) return dir * bySection;
+      return dir * classLabel(a).localeCompare(classLabel(b), undefined, {
+        sensitivity: "base",
+      });
+    });
+  }, [filteredStudents, sortKey, sortDir]);
+
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortKey(key);
+    setSortDir("asc");
+  }
+
+  function SortableHead({
+    label,
+    column,
+    className,
+  }: {
+    label: string;
+    column: SortKey;
+    className?: string;
+  }) {
+    const active = sortKey === column;
+    const Icon = !active ? ArrowUpDown : sortDir === "asc" ? ArrowUp : ArrowDown;
+    return (
+      <th className={className}>
+        <button
+          type="button"
+          onClick={() => toggleSort(column)}
+          className={cn(
+            "inline-flex items-center gap-1 font-medium hover:text-foreground",
+            active ? "text-foreground" : "text-muted-foreground",
+          )}
+        >
+          {label}
+          <Icon className="h-3.5 w-3.5" />
+        </button>
+      </th>
+    );
+  }
+
   function openCell(student: Row, mo: MonthCol) {
     const monthsMap = (student.months ?? {}) as Record<string, MonthCell>;
     const cell = monthsMap[mo.key];
-    const amountDue =
-      cell?.amountDue ??
+    const currentStatus = cell?.status ?? "UNPAID";
+    const feeAmount =
+      cell?.feeAmount ??
+      feeAmountOf(
+        cell ?? {
+          status: "UNPAID",
+          amountDue:
+            student.monthlyFee != null ? num(student.monthlyFee) : null,
+          amountPaid: 0,
+        },
+      ) ??
       (student.monthlyFee != null ? num(student.monthlyFee) : null);
+    const amountDue =
+      cell != null
+        ? remainingDue(cell)
+        : feeAmount;
+    const amountPaid = cell?.amountPaid ?? 0;
+    const paidAt = cell?.paidAt ?? null;
+    const notes = cell?.notes ?? null;
+    const isPaid = currentStatus === "PAID";
+    const openAsView = currentStatus === "PAID" || currentStatus === "PARTIAL";
+
     setEditor({
       studentProfileId: str(student.studentProfileId),
       studentName: str(student.name),
       year: mo.year,
       month: mo.month,
       key: mo.key,
+      mode: openAsView ? "view" : "edit",
+      currentStatus,
+      feeAmount,
+      amountDue,
+      amountPaid,
+      paidAt,
+      notes,
       createdBy: cell?.createdBy ?? null,
       updatedBy: cell?.updatedBy ?? null,
       createdAt: cell?.createdAt ?? null,
       updatedAt: cell?.updatedAt ?? null,
     });
-    setEditStatus(cell?.status ?? "UNPAID");
-    setEditAmountDue(amountDue != null ? String(amountDue) : "");
-    setEditAmountPaid(
-      cell != null ? String(cell.amountPaid ?? 0) : amountDue != null ? "0" : "",
+    setEditStatus(
+      currentStatus === "WAIVED"
+        ? "WAIVED"
+        : currentStatus === "UNPAID"
+          ? "PAID"
+          : feeAmount != null
+            ? statusFromAmounts(feeAmount, amountPaid)
+            : currentStatus,
     );
-    setEditPaidAt(toDateInput(cell?.paidAt) || todayInput());
-    setEditNotes(cell?.notes ?? "");
+    setEditAmountDue(feeAmount != null ? String(feeAmount) : "");
+    setEditAmountPaid(
+      currentStatus === "PAID"
+        ? feeAmount != null
+          ? String(feeAmount)
+          : String(amountPaid)
+        : currentStatus === "PARTIAL"
+          ? String(amountPaid)
+          : currentStatus === "UNPAID"
+            ? feeAmount != null
+              ? String(feeAmount)
+              : "0"
+            : String(amountPaid),
+    );
+    setEditPaidAt(toDateInput(paidAt) || todayInput());
+    setEditNotes(notes ?? "");
     setEditError("");
   }
+
+  function startEditingPayment() {
+    setEditor((prev) => (prev ? { ...prev, mode: "edit" } : prev));
+    setEditError("");
+  }
+
+  const editFeeAmount = Number(editAmountDue);
+  const editPaidAmountNum = Number(editAmountPaid);
+  const calculatedDueAmount =
+    editAmountDue.trim() === "" || Number.isNaN(editFeeAmount)
+      ? null
+      : Math.max(
+          0,
+          editFeeAmount -
+            (editAmountPaid.trim() === "" || Number.isNaN(editPaidAmountNum)
+              ? 0
+              : editPaidAmountNum),
+        );
 
   async function savePayment() {
     if (!editor || !filterYearId) return;
@@ -288,9 +550,9 @@ function FeesPageContent() {
     setError("");
     setMessage("");
     try {
-      const amountDue = Number(editAmountDue);
-      if (editAmountDue.trim() === "" || Number.isNaN(amountDue) || amountDue < 0) {
-        setEditError("Enter a valid amount due.");
+      const feeAmount = Number(editAmountDue);
+      if (editAmountDue.trim() === "" || Number.isNaN(feeAmount) || feeAmount < 0) {
+        setEditError("Fee amount is missing. Set the class monthly fee first.");
         setSavingPayment(false);
         return;
       }
@@ -306,10 +568,16 @@ function FeesPageContent() {
         return;
       }
 
-      if (
-        (editStatus === "PAID" || editStatus === "PARTIAL") &&
-        !editPaidAt
-      ) {
+      const amountDue =
+        calculatedDueAmount == null
+          ? Math.max(0, feeAmount - amountPaid)
+          : calculatedDueAmount;
+      const status =
+        editStatus === "WAIVED"
+          ? "WAIVED"
+          : statusFromAmounts(feeAmount, amountPaid);
+
+      if ((status === "PAID" || status === "PARTIAL") && !editPaidAt) {
         setEditError("Payment date is required for Paid or Partial.");
         setSavingPayment(false);
         return;
@@ -320,13 +588,14 @@ function FeesPageContent() {
         academicYearId: filterYearId,
         year: editor.year,
         month: editor.month,
-        status: editStatus,
+        status,
+        feeAmount,
         amountDue,
-        amountPaid,
+        amountPaid: status === "UNPAID" ? 0 : amountPaid,
         paidAt:
-          editStatus === "PAID" ||
-          editStatus === "PARTIAL" ||
-          (editStatus === "WAIVED" && editPaidAt)
+          status === "PAID" ||
+          status === "PARTIAL" ||
+          (status === "WAIVED" && editPaidAt)
             ? editPaidAt
             : null,
         notes: editNotes.trim() || null,
@@ -350,8 +619,8 @@ function FeesPageContent() {
         <div>
           <h1 className="text-2xl font-semibold">Fees</h1>
           <p className="text-sm text-muted-foreground">
-            Monthly fee payment status by student. Amount due defaults from the
-            class monthly fee and can be edited per payment.
+            Monthly fee payment status by student. Fee amount comes from the
+            class monthly fee; amount due is fee minus amount paid.
           </p>
         </div>
 
@@ -446,18 +715,20 @@ function FeesPageContent() {
                 <thead>
                   <tr className="bg-muted/50">
                     {showClassColumn ? (
-                      <th className="sticky left-0 z-20 w-28 min-w-28 max-w-28 bg-muted px-3 py-2 text-left font-medium">
-                        Class
-                      </th>
+                      <SortableHead
+                        label="Class"
+                        column="class"
+                        className="sticky left-0 z-20 w-28 min-w-28 max-w-28 bg-muted px-3 py-2 text-left"
+                      />
                     ) : null}
-                    <th
+                    <SortableHead
+                      label="Student"
+                      column="name"
                       className={cn(
-                        "sticky z-20 w-40 min-w-40 max-w-40 bg-muted px-3 py-2 text-left font-medium",
+                        "sticky z-20 w-40 min-w-40 max-w-40 bg-muted px-3 py-2 text-left",
                         showClassColumn ? "left-28" : "left-0",
                       )}
-                    >
-                      Student
-                    </th>
+                    />
                     <th
                       className={cn(
                         "sticky z-20 w-16 min-w-16 max-w-16 bg-muted px-2 py-2 text-left font-medium shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)]",
@@ -469,7 +740,7 @@ function FeesPageContent() {
                     {months.map((mo) => (
                       <th
                         key={mo.key}
-                        className="min-w-10 px-1 py-2 text-center font-medium"
+                        className="min-w-16 px-1 py-2 text-center font-medium"
                         title={mo.label}
                       >
                         {mo.label.split(" ")[0]}
@@ -478,7 +749,7 @@ function FeesPageContent() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredStudents.map((s) => {
+                  {sortedStudents.map((s) => {
                     const id = str(s.studentProfileId);
                     const monthsMap = (s.months ?? {}) as Record<
                       string,
@@ -496,12 +767,23 @@ function FeesPageContent() {
                         ) : null}
                         <td
                           className={cn(
-                            "sticky z-10 w-40 min-w-40 max-w-40 truncate bg-background px-3 py-1 font-medium",
+                            "sticky z-10 w-40 min-w-40 max-w-40 bg-background px-3 py-1 font-medium",
                             showClassColumn ? "left-28" : "left-0",
                           )}
                           title={str(s.name)}
                         >
-                          {str(s.name)}
+                          <span className="inline-flex max-w-full items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setEditStudentId(id)}
+                              className="inline-flex shrink-0 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                              title="Edit student"
+                              aria-label={`Edit ${str(s.name)}`}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                            <span className="truncate">{str(s.name)}</span>
+                          </span>
                         </td>
                         <td
                           className={cn(
@@ -516,6 +798,7 @@ function FeesPageContent() {
                             status: "UNPAID" as FeeStatus,
                             amountDue: null,
                             amountPaid: 0,
+                            feeAmount: null,
                             paidAt: null,
                             notes: null,
                             paymentId: null,
@@ -524,6 +807,10 @@ function FeesPageContent() {
                             createdAt: null,
                             updatedAt: null,
                           };
+                          const paidAtShort =
+                            cell.status === "PAID" || cell.status === "PARTIAL"
+                              ? formatPaidAtShort(cell.paidAt)
+                              : null;
                           return (
                             <td key={mo.key} className="p-0.5 text-center">
                               <button
@@ -531,7 +818,8 @@ function FeesPageContent() {
                                 title={statusTitle(cell)}
                                 onClick={() => openCell(s, mo)}
                                 className={cn(
-                                  "mx-auto flex h-7 w-7 items-center justify-center rounded text-[11px] font-semibold",
+                                  "mx-auto flex min-h-7 min-w-7 flex-col items-center justify-center rounded px-1 py-0.5 text-[11px] font-semibold leading-tight",
+                                  paidAtShort ? "min-w-[3.5rem]" : "w-7",
                                   cell.status === "PAID" &&
                                     "bg-emerald-100 text-emerald-800",
                                   cell.status === "PARTIAL" &&
@@ -542,7 +830,12 @@ function FeesPageContent() {
                                     "bg-muted/40 text-muted-foreground hover:bg-muted",
                                 )}
                               >
-                                {statusLetter(cell.status)}
+                                <span>{statusLetter(cell.status)}</span>
+                                {paidAtShort ? (
+                                  <span className="text-[9px] font-medium opacity-80">
+                                    {paidAtShort}
+                                  </span>
+                                ) : null}
                               </button>
                             </td>
                           );
@@ -564,7 +857,9 @@ function FeesPageContent() {
         >
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>Update fee payment</DialogTitle>
+              <DialogTitle>
+                {editor?.mode === "view" ? "Fee payment details" : "Update fee payment"}
+              </DialogTitle>
               <DialogDescription>
                 {editor
                   ? `${editor.studentName} · ${editor.year}-${String(editor.month).padStart(2, "0")}`
@@ -572,141 +867,297 @@ function FeesPageContent() {
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-4 py-2">
-              <div className="space-y-1">
-                <Label>Status</Label>
-                <Select
-                  value={editStatus}
-                  onValueChange={(v) => {
-                    const next = v as FeeStatus;
-                    const wasPayable =
-                      editStatus === "PAID" || editStatus === "PARTIAL";
-                    const willBePayable =
-                      next === "PAID" || next === "PARTIAL";
-                    setEditStatus(next);
-                    if (willBePayable && (!wasPayable || !editPaidAt)) {
-                      setEditPaidAt(todayInput());
-                    }
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="PAID">Paid</SelectItem>
-                    <SelectItem value="PARTIAL">Partial</SelectItem>
-                    <SelectItem value="UNPAID">Unpaid</SelectItem>
-                    <SelectItem value="WAIVED">Waived</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+            {editor?.mode === "view" ? (
+              <>
+                <div className="space-y-4 py-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground text-sm">Status</span>
+                    <Badge
+                      variant="outline"
+                      className={statusBadgeClass(editor.currentStatus)}
+                    >
+                      {statusLabel(editor.currentStatus)}
+                    </Badge>
+                  </div>
 
-              <div className="space-y-1">
-                <Label htmlFor="amount-due">Amount due</Label>
-                <Input
-                  id="amount-due"
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={editAmountDue}
-                  onChange={(e) => setEditAmountDue(e.target.value)}
-                  placeholder="0"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <Label htmlFor="amount-paid">Amount paid</Label>
-                <Input
-                  id="amount-paid"
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={editAmountPaid}
-                  onChange={(e) => setEditAmountPaid(e.target.value)}
-                  placeholder="0"
-                />
-              </div>
-
-              {editStatus === "PAID" || editStatus === "PARTIAL" ? (
-                <div className="space-y-1">
-                  <Label htmlFor="paid-at">Payment date</Label>
-                  <Input
-                    id="paid-at"
-                    type="date"
-                    value={editPaidAt}
-                    onChange={(e) => setEditPaidAt(e.target.value)}
-                  />
-                </div>
-              ) : null}
-
-              {editStatus === "WAIVED" ? (
-                <div className="space-y-1">
-                  <Label htmlFor="waived-at">Waiver date (optional)</Label>
-                  <Input
-                    id="waived-at"
-                    type="date"
-                    value={editPaidAt}
-                    onChange={(e) => setEditPaidAt(e.target.value)}
-                  />
-                </div>
-              ) : null}
-
-              <div className="space-y-1">
-                <Label htmlFor="fee-notes">Notes</Label>
-                <Input
-                  id="fee-notes"
-                  value={editNotes}
-                  onChange={(e) => setEditNotes(e.target.value)}
-                  placeholder="Optional"
-                />
-              </div>
-
-              {editor?.createdAt || editor?.updatedAt ? (
-                <div className="space-y-2 rounded-lg border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-                  <div className="grid grid-cols-[5.5rem_1fr] gap-x-2 gap-y-1">
-                    <span>Created by</span>
-                    <span className="text-foreground">
-                      {editor.createdBy?.name ?? "—"}
+                  <div className="grid grid-cols-[7rem_1fr] gap-x-3 gap-y-2 text-sm">
+                    <span className="text-muted-foreground">Fee amount</span>
+                    <span className="font-medium">
+                      {editor.feeAmount != null ? editor.feeAmount : "—"}
                     </span>
-                    <span>Created at</span>
-                    <span className="text-foreground">
-                      {formatDateTime(editor.createdAt)}
+                    <span className="text-muted-foreground">Amount paid</span>
+                    <span className="font-medium">{editor.amountPaid}</span>
+                    <span className="text-muted-foreground">Amount due</span>
+                    <span className="font-medium">
+                      {editor.amountDue != null ? editor.amountDue : "—"}
                     </span>
-                    <span>Updated by</span>
-                    <span className="text-foreground">
-                      {editor.updatedBy?.name ?? "—"}
+                    <span className="text-muted-foreground">Payment date</span>
+                    <span className="font-medium">
+                      {formatPaidAtLong(editor.paidAt)}
                     </span>
-                    <span>Updated at</span>
-                    <span className="text-foreground">
-                      {formatDateTime(editor.updatedAt)}
+                    <span className="text-muted-foreground">Notes</span>
+                    <span className="font-medium">
+                      {editor.notes?.trim() ? editor.notes : "—"}
                     </span>
                   </div>
+
+                  {editor.createdAt || editor.updatedAt ? (
+                    <div className="space-y-2 rounded-lg border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                      <div className="grid grid-cols-[5.5rem_1fr] gap-x-2 gap-y-1">
+                        <span>Created by</span>
+                        <span className="text-foreground">
+                          {editor.createdBy?.name ?? "—"}
+                        </span>
+                        <span>Created at</span>
+                        <span className="text-foreground">
+                          {formatDateTime(editor.createdAt)}
+                        </span>
+                        <span>Updated by</span>
+                        <span className="text-foreground">
+                          {editor.updatedBy?.name ?? "—"}
+                        </span>
+                        <span>Updated at</span>
+                        <span className="text-foreground">
+                          {formatDateTime(editor.updatedAt)}
+                        </span>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
-              ) : null}
 
-              {editError ? (
-                <p className="text-sm text-destructive">{editError}</p>
-              ) : null}
-            </div>
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setEditor(null)}
+                  >
+                    Close
+                  </Button>
+                  <Button type="button" onClick={startEditingPayment}>
+                    Edit details
+                  </Button>
+                </DialogFooter>
+              </>
+            ) : (
+              <>
+                <div className="space-y-4 py-2">
+                  {editor ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground text-sm">
+                        Current status
+                      </span>
+                      <Badge
+                        variant="outline"
+                        className={statusBadgeClass(editor.currentStatus)}
+                      >
+                        {statusLabel(editor.currentStatus)}
+                      </Badge>
+                    </div>
+                  ) : null}
 
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setEditor(null)}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                onClick={savePayment}
-                disabled={savingPayment}
-              >
-                {savingPayment ? "Saving..." : "Save"}
-              </Button>
-            </DialogFooter>
+                  <div className="space-y-1">
+                    <Label>New status</Label>
+                    <Select
+                      value={editStatus}
+                      onValueChange={(v) => {
+                        const next = v as FeeStatus;
+                        const wasPayable =
+                          editStatus === "PAID" || editStatus === "PARTIAL";
+                        const willBePayable =
+                          next === "PAID" || next === "PARTIAL";
+                        setEditStatus(next);
+                        if (willBePayable && (!wasPayable || !editPaidAt)) {
+                          setEditPaidAt(todayInput());
+                        }
+                        if (next === "PAID") {
+                          const fee = Number(editAmountDue);
+                          if (
+                            editAmountDue.trim() !== "" &&
+                            !Number.isNaN(fee) &&
+                            fee >= 0
+                          ) {
+                            setEditAmountPaid(String(fee));
+                          }
+                        } else if (next === "UNPAID") {
+                          setEditAmountPaid("0");
+                        }
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="PAID">Paid</SelectItem>
+                        <SelectItem value="PARTIAL">Partial</SelectItem>
+                        <SelectItem value="UNPAID">Unpaid</SelectItem>
+                        <SelectItem value="WAIVED">Waived</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {editStatus === "PAID" ? (
+                      <p className="text-muted-foreground text-xs">
+                        Marking paid also marks all earlier months in this year
+                        as paid.
+                      </p>
+                    ) : null}
+                    {editStatus === "UNPAID" ? (
+                      <p className="text-muted-foreground text-xs">
+                        Marking unpaid also marks all later months in this year
+                        as unpaid.
+                      </p>
+                    ) : null}
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label>Fee amount</Label>
+                    <p className="text-sm font-medium">
+                      {editAmountDue.trim() !== "" ? editAmountDue : "—"}
+                    </p>
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label htmlFor="amount-paid">Amount paid</Label>
+                    <Input
+                      id="amount-paid"
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={editAmountPaid}
+                      onChange={(e) => {
+                        const nextPaid = e.target.value;
+                        setEditAmountPaid(nextPaid);
+                        if (editStatus === "WAIVED") return;
+                        const fee = Number(editAmountDue);
+                        const paid = Number(nextPaid);
+                        if (
+                          editAmountDue.trim() === "" ||
+                          Number.isNaN(fee) ||
+                          nextPaid.trim() === "" ||
+                          Number.isNaN(paid)
+                        ) {
+                          return;
+                        }
+                        setEditStatus(statusFromAmounts(fee, paid));
+                        if (paid > 0 && !editPaidAt) {
+                          setEditPaidAt(todayInput());
+                        }
+                      }}
+                      placeholder="0"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label htmlFor="amount-due">Amount due</Label>
+                    <Input
+                      id="amount-due"
+                      type="number"
+                      value={
+                        calculatedDueAmount == null
+                          ? ""
+                          : String(calculatedDueAmount)
+                      }
+                      readOnly
+                      className="bg-muted/40"
+                    />
+                    <p className="text-muted-foreground text-xs">
+                      Calculated as fee amount minus amount paid.
+                    </p>
+                  </div>
+
+                  {editStatus === "PAID" || editStatus === "PARTIAL" ? (
+                    <div className="space-y-1">
+                      <Label htmlFor="paid-at">Payment date</Label>
+                      <Input
+                        id="paid-at"
+                        type="date"
+                        value={editPaidAt}
+                        onChange={(e) => setEditPaidAt(e.target.value)}
+                      />
+                    </div>
+                  ) : null}
+
+                  {editStatus === "WAIVED" ? (
+                    <div className="space-y-1">
+                      <Label htmlFor="waived-at">Waiver date (optional)</Label>
+                      <Input
+                        id="waived-at"
+                        type="date"
+                        value={editPaidAt}
+                        onChange={(e) => setEditPaidAt(e.target.value)}
+                      />
+                    </div>
+                  ) : null}
+
+                  <div className="space-y-1">
+                    <Label htmlFor="fee-notes">Notes</Label>
+                    <Input
+                      id="fee-notes"
+                      value={editNotes}
+                      onChange={(e) => setEditNotes(e.target.value)}
+                      placeholder="Optional"
+                    />
+                  </div>
+
+                  {editor?.createdAt || editor?.updatedAt ? (
+                    <div className="space-y-2 rounded-lg border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                      <div className="grid grid-cols-[5.5rem_1fr] gap-x-2 gap-y-1">
+                        <span>Created by</span>
+                        <span className="text-foreground">
+                          {editor.createdBy?.name ?? "—"}
+                        </span>
+                        <span>Created at</span>
+                        <span className="text-foreground">
+                          {formatDateTime(editor.createdAt)}
+                        </span>
+                        <span>Updated by</span>
+                        <span className="text-foreground">
+                          {editor.updatedBy?.name ?? "—"}
+                        </span>
+                        <span>Updated at</span>
+                        <span className="text-foreground">
+                          {formatDateTime(editor.updatedAt)}
+                        </span>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {editError ? (
+                    <p className="text-sm text-destructive">{editError}</p>
+                  ) : null}
+                </div>
+
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setEditor(null)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={savePayment}
+                    disabled={savingPayment}
+                  >
+                    {savingPayment ? "Saving..." : "Save"}
+                  </Button>
+                </DialogFooter>
+              </>
+            )}
           </DialogContent>
         </Dialog>
+
+        <StudentEditSheet
+          studentId={editStudentId}
+          academicYearId={filterYearId || null}
+          open={editStudentId != null}
+          onOpenChange={(open) => {
+            if (!open) setEditStudentId(null);
+          }}
+          onSaved={() => {
+            setMessage("Student updated.");
+            void loadRegister();
+          }}
+        />
       </div>
     </DashboardShell>
   );
