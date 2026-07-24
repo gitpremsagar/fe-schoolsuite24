@@ -849,7 +849,7 @@ export default function StudentsPage() {
                     <TableRow>
                       <TableCell colSpan={5} className="text-muted-foreground">
                         {selectedYearName
-                          ? `No students enrolled for ${selectedYearName}.`
+                          ? `No students for ${selectedYearName}.`
                           : "No students yet."}
                       </TableCell>
                     </TableRow>

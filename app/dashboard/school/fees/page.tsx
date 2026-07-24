@@ -42,6 +42,8 @@ type MonthCell = {
   paidAt: string | null;
   notes: string | null;
   paymentId: string | null;
+  /** False for months before the student's admission date. */
+  isApplicable?: boolean;
   createdBy: AuditUser | null;
   updatedBy: AuditUser | null;
   createdAt: string | null;
@@ -92,6 +94,14 @@ function formatDateTime(iso: string | null | undefined): string {
 
 function todayInput(): string {
   return localDateInput(new Date());
+}
+
+function monthYearLabel(year: number, month: number): string {
+  return new Date(Date.UTC(year, month - 1, 1)).toLocaleString("en-IN", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  });
 }
 
 function statusLetter(status: FeeStatus): string {
@@ -166,6 +176,9 @@ function formatPaidAtLong(iso: string | null | undefined): string {
 }
 
 function statusTitle(cell: MonthCell): string {
+  if (cell.isApplicable === false) {
+    return "Not applicable · Before date of admission";
+  }
   const feeValue = feeAmountOf(cell);
   const fee = feeValue != null ? `Fee ${feeValue}` : "Fee not set";
   const balance = remainingDue(cell);
@@ -457,6 +470,7 @@ function FeesPageContent() {
   function openCell(student: Row, mo: MonthCol) {
     const monthsMap = (student.months ?? {}) as Record<string, MonthCell>;
     const cell = monthsMap[mo.key];
+    if (cell?.isApplicable === false) return;
     const currentStatus = cell?.status ?? "UNPAID";
     const feeAmount =
       cell?.feeAmount ??
@@ -694,7 +708,7 @@ function FeesPageContent() {
             {selectedYearName
               ? `${selectedYearName} · Click a cell to update payment status.`
               : "Select an academic year."}{" "}
-            P = Paid, H = Partial, U = Unpaid, W = Waived.
+            P = Paid, H = Partial, U = Unpaid, W = Waived, N/A = Before admission.
           </p>
 
           {loading ? (
@@ -710,28 +724,28 @@ function FeesPageContent() {
               No students match the current search or class filter.
             </p>
           ) : (
-            <div className="max-w-full overflow-x-auto rounded-xl border">
+            <div className="max-h-[calc(100vh-14rem)] max-w-full overflow-auto rounded-xl border">
               <table className="w-max min-w-full border-collapse text-xs">
                 <thead>
-                  <tr className="bg-muted/50">
+                  <tr className="bg-muted">
                     {showClassColumn ? (
                       <SortableHead
                         label="Class"
                         column="class"
-                        className="sticky left-0 z-20 w-28 min-w-28 max-w-28 bg-muted px-3 py-2 text-left"
+                        className="sticky left-0 top-0 z-30 w-28 min-w-28 max-w-28 bg-muted px-3 py-2 text-left shadow-[0_1px_0_0_hsl(var(--border))]"
                       />
                     ) : null}
                     <SortableHead
                       label="Student"
                       column="name"
                       className={cn(
-                        "sticky z-20 w-40 min-w-40 max-w-40 bg-muted px-3 py-2 text-left",
+                        "sticky top-0 z-30 w-40 min-w-40 max-w-40 bg-muted px-3 py-2 text-left shadow-[0_1px_0_0_hsl(var(--border))]",
                         showClassColumn ? "left-28" : "left-0",
                       )}
                     />
                     <th
                       className={cn(
-                        "sticky z-20 w-16 min-w-16 max-w-16 bg-muted px-2 py-2 text-left font-medium shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)]",
+                        "sticky top-0 z-30 w-16 min-w-16 max-w-16 bg-muted px-2 py-2 text-left font-medium shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12),0_1px_0_0_hsl(var(--border))]",
                         showClassColumn ? "left-[17rem]" : "left-40",
                       )}
                     >
@@ -740,7 +754,7 @@ function FeesPageContent() {
                     {months.map((mo) => (
                       <th
                         key={mo.key}
-                        className="min-w-16 px-1 py-2 text-center font-medium"
+                        className="sticky top-0 z-20 min-w-16 bg-muted px-1 py-2 text-center font-medium shadow-[0_1px_0_0_hsl(var(--border))]"
                         title={mo.label}
                       >
                         {mo.label.split(" ")[0]}
@@ -802,11 +816,28 @@ function FeesPageContent() {
                             paidAt: null,
                             notes: null,
                             paymentId: null,
+                            isApplicable: true,
                             createdBy: null,
                             updatedBy: null,
                             createdAt: null,
                             updatedAt: null,
                           };
+                          const applicable = cell.isApplicable !== false;
+                          if (!applicable) {
+                            return (
+                              <td key={mo.key} className="p-0.5 text-center">
+                                <span
+                                  title={statusTitle({
+                                    ...cell,
+                                    isApplicable: false,
+                                  })}
+                                  className="mx-auto flex h-7 w-7 items-center justify-center rounded bg-transparent text-[10px] font-medium text-muted-foreground/70"
+                                >
+                                  N/A
+                                </span>
+                              </td>
+                            );
+                          }
                           const paidAtShort =
                             cell.status === "PAID" || cell.status === "PARTIAL"
                               ? formatPaidAtShort(cell.paidAt)
@@ -862,7 +893,7 @@ function FeesPageContent() {
               </DialogTitle>
               <DialogDescription>
                 {editor
-                  ? `${editor.studentName} · ${editor.year}-${String(editor.month).padStart(2, "0")}`
+                  ? `${editor.studentName} · ${monthYearLabel(editor.year, editor.month)}`
                   : ""}
               </DialogDescription>
             </DialogHeader>

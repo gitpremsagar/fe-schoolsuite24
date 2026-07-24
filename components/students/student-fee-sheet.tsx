@@ -22,6 +22,8 @@ type MonthCell = {
   amountPaid: number;
   paidAt: string | null;
   notes: string | null;
+  /** False for months before the student's admission date. */
+  isApplicable?: boolean;
 };
 type MonthCol = { year: number; month: number; key: string; label: string };
 type Row = Record<string, unknown>;
@@ -205,6 +207,7 @@ export function StudentFeeSheet({
           amountPaid: 0,
           paidAt: null,
           notes: null,
+          isApplicable: true,
         } satisfies MonthCell);
       return { ...mo, cell };
     });
@@ -216,6 +219,7 @@ export function StudentFeeSheet({
     let paidMonths = 0;
     let unpaidMonths = 0;
     for (const { cell } of yearMonths) {
+      if (cell.isApplicable === false) continue;
       if (cell.amountDue != null) due += cell.amountDue;
       paid += cell.amountPaid;
       if (cell.status === "PAID" || cell.status === "WAIVED") paidMonths += 1;
@@ -324,6 +328,24 @@ export function StudentFeeSheet({
               <div className="grid grid-cols-3 gap-2">
                 {yearMonths.map(({ key, year, month, label, cell }) => {
                   const isCurrent = key === currentMonthKey;
+                  const applicable = cell.isApplicable !== false;
+                  if (!applicable) {
+                    return (
+                      <div
+                        key={key}
+                        title={`${label}: Not applicable · Before date of admission`}
+                        className="flex flex-col items-center justify-center gap-1 rounded-md border border-dashed border-muted bg-transparent px-2 py-3 text-center text-muted-foreground/70"
+                      >
+                        <span className="text-[11px] font-medium opacity-80">
+                          {monthShort(month)} {String(year).slice(-2)}
+                        </span>
+                        <span className="text-sm font-semibold leading-none">
+                          N/A
+                        </span>
+                        <span className="text-[10px] opacity-80">—</span>
+                      </div>
+                    );
+                  }
                   return (
                     <div
                       key={key}
@@ -358,7 +380,7 @@ export function StudentFeeSheet({
 
               <p className="text-xs text-muted-foreground">
                 Months shown belong to this academic year. P = Paid · H =
-                Partial · U = Unpaid · W = Waived.
+                Partial · U = Unpaid · W = Waived · N/A = Before admission.
               </p>
             </>
           )}
