@@ -19,10 +19,20 @@ export const CLASS_LEVELS = [
 
 export type ClassLevel = (typeof CLASS_LEVELS)[number];
 
+const CLASS_LEVEL_SHORT: Partial<Record<string, string>> = {
+  "Lower kindergarten": "L-KG",
+  "Upper kindergarten": "U-KG",
+};
+
 export function formatClassLabel(
   classLevel: string | null | undefined,
   section?: string | null,
+  opts?: { compact?: boolean },
 ): string {
   if (!classLevel) return "—";
-  return section ? `${classLevel} - ${section}` : classLevel;
+  const level =
+    opts?.compact && CLASS_LEVEL_SHORT[classLevel]
+      ? CLASS_LEVEL_SHORT[classLevel]!
+      : classLevel;
+  return section ? `${level} - ${section}` : level;
 }

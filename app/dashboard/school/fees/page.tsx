@@ -49,10 +49,75 @@ type MonthCell = {
   createdAt: string | null;
   updatedAt: string | null;
 };
-type SortKey = "name" | "class";
+type SortKey = "name" | "class" | string; // month keys look like "2026-04"
 type SortDir = "asc" | "desc";
 
 const ALL_CLASSES = "__all__";
+
+function getMonthCell(
+  student: Row,
+  monthKey: string,
+): MonthCell | undefined {
+  const monthsMap = (student.months ?? {}) as Record<string, MonthCell>;
+  return monthsMap[monthKey];
+}
+
+/** Lower rank sorts first in ascending month sort (unpaid on top). */
+function monthPaymentRank(cell: MonthCell | undefined): number {
+  if (!cell || cell.isApplicable === false) return 3; // N/A last
+  if (cell.status === "UNPAID") return 0;
+  if (cell.status === "PARTIAL") return 1;
+  return 2; // PAID / WAIVED
+}
+
+function paidAtTimestamp(cell: MonthCell | undefined): number {
+  if (!cell?.paidAt) return Number.POSITIVE_INFINITY;
+  const t = new Date(cell.paidAt).getTime();
+  return Number.isNaN(t) ? Number.POSITIVE_INFINITY : t;
+}
+
+/**
+ * Compare two students for a month-column sort starting at `startKey`.
+ *
+ * 1. Payment status cascades through the clicked month and every later month
+ *    (unpaid, then partial, then paid/waived) so later unpaid cells still rise
+ *    within earlier paid groups.
+ * 2. Only after statuses match through those months, payment dates cascade —
+ *    each month uses its own paidAt.
+ */
+function compareStudentsByMonthCascade(
+  a: Row,
+  b: Row,
+  startKey: string,
+  monthCols: MonthCol[],
+  dir: number,
+): number {
+  const startIdx = monthCols.findIndex((m) => m.key === startKey);
+  if (startIdx < 0) return 0;
+
+  for (let i = startIdx; i < monthCols.length; i++) {
+    const key = monthCols[i].key;
+    const ra = monthPaymentRank(getMonthCell(a, key));
+    const rb = monthPaymentRank(getMonthCell(b, key));
+    if (ra !== rb) return dir * (ra - rb);
+  }
+
+  for (let i = startIdx; i < monthCols.length; i++) {
+    const key = monthCols[i].key;
+    const ca = getMonthCell(a, key);
+    const cb = getMonthCell(b, key);
+    const rank = monthPaymentRank(ca);
+    // Only compare dates for partial/paid/waived months.
+    if (rank !== 1 && rank !== 2) continue;
+    const ta = paidAtTimestamp(ca);
+    const tb = paidAtTimestamp(cb);
+    if (ta !== tb) return dir * (ta - tb);
+  }
+
+  return dir * str(a.name).localeCompare(str(b.name), undefined, {
+    sensitivity: "base",
+  });
+}
 
 function str(v: unknown): string {
   return v == null ? "" : String(v);
@@ -229,10 +294,11 @@ function statusFromAmounts(fee: number, paid: number): FeeStatus {
   return "PARTIAL";
 }
 
-function classLabel(s: Row): string {
+function classLabel(s: Row, compact = false): string {
   return formatClassLabel(
     str(s.classLevel || s.className),
     str(s.section) || null,
+    { compact },
   );
 }
 
@@ -263,7 +329,7 @@ function statusBadgeClass(status: FeeStatus): string {
     case "WAIVED":
       return "border-transparent bg-sky-100 text-sky-800";
     default:
-      return "border-transparent bg-muted text-muted-foreground";
+      return "border-transparent bg-rose-50 text-rose-700";
   }
 }
 
@@ -333,6 +399,8 @@ function FeesPageContent() {
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [editStudentId, setEditStudentId] = useState<string | null>(null);
+  const [hoverRowId, setHoverRowId] = useState<string | null>(null);
+  const [hoverColKey, setHoverColKey] = useState<string | null>(null);
 
   const handleErr = useCallback(
     (err: unknown, fallback: string) => {
@@ -417,18 +485,21 @@ function FeesPageContent() {
           sensitivity: "base",
         });
       }
-      const byLevel =
-        classSortIndex(str(a.classLevel)) - classSortIndex(str(b.classLevel));
-      if (byLevel !== 0) return dir * byLevel;
-      const bySection = str(a.section).localeCompare(str(b.section), undefined, {
-        sensitivity: "base",
-      });
-      if (bySection !== 0) return dir * bySection;
-      return dir * classLabel(a).localeCompare(classLabel(b), undefined, {
-        sensitivity: "base",
-      });
+      if (sortKey === "class") {
+        const byLevel =
+          classSortIndex(str(a.classLevel)) - classSortIndex(str(b.classLevel));
+        if (byLevel !== 0) return dir * byLevel;
+        const bySection = str(a.section).localeCompare(str(b.section), undefined, {
+          sensitivity: "base",
+        });
+        if (bySection !== 0) return dir * bySection;
+        return dir * classLabel(a).localeCompare(classLabel(b), undefined, {
+          sensitivity: "base",
+        });
+      }
+      return compareStudentsByMonthCascade(a, b, sortKey, months, dir);
     });
-  }, [filteredStudents, sortKey, sortDir]);
+  }, [filteredStudents, sortKey, sortDir, months]);
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
@@ -443,25 +514,29 @@ function FeesPageContent() {
     label,
     column,
     className,
+    title,
+    onMouseEnter,
   }: {
     label: string;
     column: SortKey;
     className?: string;
+    title?: string;
+    onMouseEnter?: () => void;
   }) {
     const active = sortKey === column;
     const Icon = !active ? ArrowUpDown : sortDir === "asc" ? ArrowUp : ArrowDown;
     return (
-      <th className={className}>
+      <th className={className} title={title} onMouseEnter={onMouseEnter}>
         <button
           type="button"
           onClick={() => toggleSort(column)}
           className={cn(
-            "inline-flex items-center gap-1 font-medium hover:text-foreground",
+            "inline-flex items-center justify-center gap-0.5 font-medium hover:text-foreground",
             active ? "text-foreground" : "text-muted-foreground",
           )}
         >
           {label}
-          <Icon className="h-3.5 w-3.5" />
+          <Icon className="h-3 w-3 shrink-0 opacity-70" />
         </button>
       </th>
     );
@@ -627,90 +702,88 @@ function FeesPageContent() {
   const showClassColumn =
     filterClassId === ALL_CLASSES && !focusStudentId;
 
+  function hoverBg(rowId: string | null, colKey?: string): string {
+    const rowOn = rowId != null && hoverRowId === rowId;
+    const colOn = colKey != null && hoverColKey === colKey;
+    if (rowOn && colOn) return "bg-sky-200";
+    if (rowOn || colOn) return "bg-sky-100";
+    return "";
+  }
+
+  function setHover(rowId: string | null, colKey: string | null) {
+    setHoverRowId(rowId);
+    setHoverColKey(colKey);
+  }
+
+  function clearHover() {
+    setHoverRowId(null);
+    setHoverColKey(null);
+  }
+
   return (
     <DashboardShell allowedRoles={["ADMIN"]}>
-      <div className="min-w-0 space-y-6">
-        <div>
+      <div className="min-w-0 space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-2xl font-semibold">Fees</h1>
-          <p className="text-sm text-muted-foreground">
-            Monthly fee payment status by student. Fee amount comes from the
-            class monthly fee; amount due is fee minus amount paid.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="space-y-1">
-            <Label>Academic year</Label>
-            <Select
-              value={filterYearId}
-              onValueChange={(v) => {
-                setFocusStudentId("");
-                setFilterYearId(v);
-              }}
-            >
-              <SelectTrigger className="w-48">
-                <SelectValue placeholder="Select year" />
-              </SelectTrigger>
-              <SelectContent>
-                {years.map((y) => (
-                  <SelectItem key={str(y.id)} value={str(y.id)}>
-                    {str(y.name)}
-                    {y.isCurrent ? " (current)" : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <Label>Class</Label>
-            <Select
-              value={filterClassId}
-              onValueChange={(v) => {
-                setFocusStudentId("");
-                setFilterClassId(v);
-              }}
-            >
-              <SelectTrigger className="w-56">
-                <SelectValue placeholder="All classes" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL_CLASSES}>All classes</SelectItem>
-                {classes.map((c) => (
-                  <SelectItem key={str(c.id)} value={str(c.id)}>
-                    {formatClassLabel(
-                      str(c.classLevel) || str(c.name),
-                      str(c.section) || null,
-                    )}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="min-w-[14rem] flex-1 space-y-1 sm:max-w-xs">
-            <Label htmlFor="fee-student-search">Search student</Label>
-            <Input
-              id="fee-student-search"
-              value={nameQuery}
-              onChange={(e) => {
-                setFocusStudentId("");
-                setNameQuery(e.target.value);
-              }}
-              placeholder="Search by name..."
-            />
-          </div>
+          <Input
+            id="fee-student-search"
+            value={nameQuery}
+            onChange={(e) => {
+              setFocusStudentId("");
+              setNameQuery(e.target.value);
+            }}
+            placeholder="Search by name..."
+            className="min-w-[12rem] flex-1 sm:max-w-xs"
+            aria-label="Search student"
+          />
+          <Select
+            value={filterClassId}
+            onValueChange={(v) => {
+              setFocusStudentId("");
+              setFilterClassId(v);
+            }}
+          >
+            <SelectTrigger className="w-48" aria-label="Class">
+              <SelectValue placeholder="All classes" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_CLASSES}>All classes</SelectItem>
+              {classes.map((c) => (
+                <SelectItem key={str(c.id)} value={str(c.id)}>
+                  {formatClassLabel(
+                    str(c.classLevel) || str(c.name),
+                    str(c.section) || null,
+                    { compact: true },
+                  )}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
+            value={filterYearId}
+            onValueChange={(v) => {
+              setFocusStudentId("");
+              setFilterYearId(v);
+            }}
+          >
+            <SelectTrigger className="w-48" aria-label="Session">
+              <SelectValue placeholder="Session" />
+            </SelectTrigger>
+            <SelectContent>
+              {years.map((y) => (
+                <SelectItem key={str(y.id)} value={str(y.id)}>
+                  {str(y.name)}
+                  {y.isCurrent ? " (current)" : ""}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
         {message ? <p className="text-sm text-green-600">{message}</p> : null}
 
-        <div className="space-y-2">
-          <p className="text-sm text-muted-foreground">
-            {selectedYearName
-              ? `${selectedYearName} · Click a cell to update payment status.`
-              : "Select an academic year."}{" "}
-            P = Paid, H = Partial, U = Unpaid, W = Waived, N/A = Before admission.
-          </p>
-
+        <div>
           {loading ? (
             <LoadingPulseCard />
           ) : students.length === 0 ? (
@@ -724,15 +797,25 @@ function FeesPageContent() {
               No students match the current search or class filter.
             </p>
           ) : (
-            <div className="max-h-[calc(100vh-14rem)] max-w-full overflow-auto rounded-xl border">
+            <div
+              className="max-h-[calc(100vh-10rem)] max-w-full overflow-auto rounded-xl border"
+              onMouseLeave={clearHover}
+            >
               <table className="w-max min-w-full border-collapse text-xs">
                 <thead>
                   <tr className="bg-muted">
+                    <th
+                      className="sticky left-0 top-0 z-30 w-10 min-w-10 max-w-10 bg-muted px-1 py-2 text-center font-medium shadow-[0_1px_0_0_hsl(var(--border))]"
+                      onMouseEnter={clearHover}
+                    >
+                      #
+                    </th>
                     {showClassColumn ? (
                       <SortableHead
                         label="Class"
                         column="class"
-                        className="sticky left-0 top-0 z-30 w-28 min-w-28 max-w-28 bg-muted px-3 py-2 text-left shadow-[0_1px_0_0_hsl(var(--border))]"
+                        className="sticky left-10 top-0 z-30 w-28 min-w-28 max-w-28 bg-muted px-3 py-2 text-left shadow-[0_1px_0_0_hsl(var(--border))]"
+                        onMouseEnter={clearHover}
                       />
                     ) : null}
                     <SortableHead
@@ -740,51 +823,72 @@ function FeesPageContent() {
                       column="name"
                       className={cn(
                         "sticky top-0 z-30 w-40 min-w-40 max-w-40 bg-muted px-3 py-2 text-left shadow-[0_1px_0_0_hsl(var(--border))]",
-                        showClassColumn ? "left-28" : "left-0",
+                        showClassColumn ? "left-[9.5rem]" : "left-10",
                       )}
+                      onMouseEnter={clearHover}
                     />
                     <th
                       className={cn(
                         "sticky top-0 z-30 w-16 min-w-16 max-w-16 bg-muted px-2 py-2 text-left font-medium shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12),0_1px_0_0_hsl(var(--border))]",
-                        showClassColumn ? "left-[17rem]" : "left-40",
+                        showClassColumn ? "left-[19.5rem]" : "left-[12.5rem]",
                       )}
+                      onMouseEnter={clearHover}
                     >
                       Fee
                     </th>
                     {months.map((mo) => (
-                      <th
+                      <SortableHead
                         key={mo.key}
-                        className="sticky top-0 z-20 min-w-16 bg-muted px-1 py-2 text-center font-medium shadow-[0_1px_0_0_hsl(var(--border))]"
-                        title={mo.label}
-                      >
-                        {mo.label.split(" ")[0]}
-                      </th>
+                        label={mo.label.split(" ")[0]}
+                        column={mo.key}
+                        title={`${mo.label} · Unpaid first through later months, then each month's own payment date`}
+                        className={cn(
+                          "sticky top-0 z-20 min-w-[4rem] px-1 py-2 text-center shadow-[0_1px_0_0_hsl(var(--border))]",
+                          hoverColKey === mo.key ? "bg-sky-200" : "bg-muted",
+                        )}
+                        onMouseEnter={() => setHover(null, mo.key)}
+                      />
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedStudents.map((s) => {
+                  {sortedStudents.map((s, index) => {
                     const id = str(s.studentProfileId);
                     const monthsMap = (s.months ?? {}) as Record<
                       string,
                       MonthCell
                     >;
                     return (
-                      <tr key={id} className="border-t">
+                      <tr key={id}>
+                        <td
+                          className={cn(
+                            "sticky left-0 z-10 w-10 min-w-10 max-w-10 border-t px-1 py-1 text-center text-muted-foreground",
+                            hoverBg(id) || "bg-background",
+                          )}
+                          onMouseEnter={() => setHover(id, null)}
+                        >
+                          {index + 1}
+                        </td>
                         {showClassColumn ? (
                           <td
-                            className="sticky left-0 z-10 w-28 min-w-28 max-w-28 truncate bg-background px-3 py-1"
+                            className={cn(
+                              "sticky left-10 z-10 w-28 min-w-28 max-w-28 truncate border-t px-3 py-1",
+                              hoverBg(id) || "bg-background",
+                            )}
                             title={classLabel(s)}
+                            onMouseEnter={() => setHover(id, null)}
                           >
-                            {classLabel(s)}
+                            {classLabel(s, true)}
                           </td>
                         ) : null}
                         <td
                           className={cn(
-                            "sticky z-10 w-40 min-w-40 max-w-40 bg-background px-3 py-1 font-medium",
-                            showClassColumn ? "left-28" : "left-0",
+                            "sticky z-10 w-40 min-w-40 max-w-40 border-t px-3 py-1 font-medium",
+                            showClassColumn ? "left-[9.5rem]" : "left-10",
+                            hoverBg(id) || "bg-background",
                           )}
                           title={str(s.name)}
+                          onMouseEnter={() => setHover(id, null)}
                         >
                           <span className="inline-flex max-w-full items-center gap-1.5">
                             <button
@@ -801,9 +905,11 @@ function FeesPageContent() {
                         </td>
                         <td
                           className={cn(
-                            "sticky z-10 w-16 min-w-16 max-w-16 bg-background px-2 py-1 text-muted-foreground shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)]",
-                            showClassColumn ? "left-[17rem]" : "left-40",
+                            "sticky z-10 w-16 min-w-16 max-w-16 border-t px-2 py-1 text-muted-foreground shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)]",
+                            showClassColumn ? "left-[19.5rem]" : "left-[12.5rem]",
+                            hoverBg(id) || "bg-background",
                           )}
+                          onMouseEnter={() => setHover(id, null)}
                         >
                           {s.monthlyFee != null ? num(s.monthlyFee) : "—"}
                         </td>
@@ -823,15 +929,20 @@ function FeesPageContent() {
                             updatedAt: null,
                           };
                           const applicable = cell.isApplicable !== false;
+                          const colHighlight = hoverBg(id, mo.key);
                           if (!applicable) {
                             return (
-                              <td key={mo.key} className="p-0.5 text-center">
+                              <td
+                                key={mo.key}
+                                className={cn("p-1 text-center", colHighlight)}
+                                onMouseEnter={() => setHover(id, mo.key)}
+                              >
                                 <span
                                   title={statusTitle({
                                     ...cell,
                                     isApplicable: false,
                                   })}
-                                  className="mx-auto flex h-7 w-7 items-center justify-center rounded bg-transparent text-[10px] font-medium text-muted-foreground/70"
+                                  className="mx-auto flex h-9 w-14 items-center justify-center rounded bg-transparent text-[10px] font-medium text-muted-foreground/70"
                                 >
                                   N/A
                                 </span>
@@ -839,18 +950,28 @@ function FeesPageContent() {
                             );
                           }
                           const paidAtShort =
-                            cell.status === "PAID" || cell.status === "PARTIAL"
+                            cell.status === "PAID"
                               ? formatPaidAtShort(cell.paidAt)
                               : null;
+                          const partialDue =
+                            cell.status === "PARTIAL"
+                              ? remainingDue(cell)
+                              : null;
+                          const subline =
+                            paidAtShort ??
+                            (partialDue != null ? `due ${partialDue}` : "\u00a0");
                           return (
-                            <td key={mo.key} className="p-0.5 text-center">
+                            <td
+                              key={mo.key}
+                              className={cn("p-1 text-center", colHighlight)}
+                              onMouseEnter={() => setHover(id, mo.key)}
+                            >
                               <button
                                 type="button"
                                 title={statusTitle(cell)}
                                 onClick={() => openCell(s, mo)}
                                 className={cn(
-                                  "mx-auto flex min-h-7 min-w-7 flex-col items-center justify-center rounded px-1 py-0.5 text-[11px] font-semibold leading-tight",
-                                  paidAtShort ? "min-w-[3.5rem]" : "w-7",
+                                  "mx-auto flex h-9 w-14 flex-col items-center justify-center rounded px-1 py-0.5 text-[11px] font-semibold leading-tight",
                                   cell.status === "PAID" &&
                                     "bg-emerald-100 text-emerald-800",
                                   cell.status === "PARTIAL" &&
@@ -858,15 +979,13 @@ function FeesPageContent() {
                                   cell.status === "WAIVED" &&
                                     "bg-sky-100 text-sky-800",
                                   cell.status === "UNPAID" &&
-                                    "bg-muted/40 text-muted-foreground hover:bg-muted",
+                                    "bg-rose-50 text-rose-700 hover:bg-rose-100",
                                 )}
                               >
                                 <span>{statusLetter(cell.status)}</span>
-                                {paidAtShort ? (
-                                  <span className="text-[9px] font-medium opacity-80">
-                                    {paidAtShort}
-                                  </span>
-                                ) : null}
+                                <span className="h-2.5 text-[9px] font-medium opacity-80">
+                                  {subline}
+                                </span>
                               </button>
                             </td>
                           );
