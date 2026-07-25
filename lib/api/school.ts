@@ -118,6 +118,46 @@ export const schoolApi = {
     upsertPayment: (body: Record<string, unknown>) =>
       apiFetch("/fees/payments", { method: "PUT", body }),
   },
+  eventFees: {
+    list: (opts?: { academicYearId?: string; includeInactive?: boolean }) => {
+      const params = new URLSearchParams();
+      if (opts?.academicYearId) {
+        params.set("academicYearId", opts.academicYearId);
+      }
+      if (opts?.includeInactive) params.set("includeInactive", "1");
+      const qs = params.toString();
+      return apiFetch<{
+        academicYear: Record<string, unknown>;
+        eventFees: Array<Record<string, unknown>>;
+      }>(`/event-fees${qs ? `?${qs}` : ""}`);
+    },
+    create: (body: Record<string, unknown>) =>
+      apiFetch<{ eventFee: Record<string, unknown> }>("/event-fees", {
+        method: "POST",
+        body,
+      }),
+    get: (id: string) =>
+      apiFetch<{ eventFee: Record<string, unknown> }>(`/event-fees/${id}`),
+    update: (id: string, body: Record<string, unknown>) =>
+      apiFetch<{ eventFee: Record<string, unknown> }>(`/event-fees/${id}`, {
+        method: "PATCH",
+        body,
+      }),
+    deactivate: (id: string) =>
+      apiFetch<{ eventFee: Record<string, unknown> }>(`/event-fees/${id}`, {
+        method: "DELETE",
+      }),
+    register: (id: string) =>
+      apiFetch<{
+        event: Record<string, unknown>;
+        students: Array<Record<string, unknown>>;
+      }>(`/event-fees/${id}/register`),
+    upsertPayment: (id: string, body: Record<string, unknown>) =>
+      apiFetch<{ payment: Record<string, unknown> }>(
+        `/event-fees/${id}/payments`,
+        { method: "PUT", body },
+      ),
+  },
   holidays: {
     list: (year: number, month: number) =>
       apiFetch<{

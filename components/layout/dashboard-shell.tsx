@@ -41,6 +41,7 @@ function navForRole(role: UserRole): NavItem[] {
         { href: "/dashboard/school/staff", label: "Staff" },
         { href: "/dashboard/school/attendance/students", label: "Attendance" },
         { href: "/dashboard/school/fees", label: "Fee" },
+        { href: "/dashboard/school/event-fees", label: "Event Fees" },
         { href: "/dashboard/school/billing", label: "Billing" },
         { href: "/dashboard/school/settings", label: "Settings" },
       ];
