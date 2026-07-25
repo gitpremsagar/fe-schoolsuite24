@@ -249,4 +249,13 @@ export const attendanceApi = {
       staffProfileId?: string;
       date?: string;
     }>("/attendance/staff/day", { method: "POST", body }),
+  staffQr: () =>
+    apiFetch<{ qr: { token: string; link: string; rotatedAt: string } }>(
+      "/attendance/staff/qr",
+    ),
+  rotateStaffQr: () =>
+    apiFetch<{ qr: { token: string; link: string; rotatedAt: string } }>(
+      "/attendance/staff/qr/rotate",
+      { method: "POST" },
+    ),
 };

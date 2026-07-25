@@ -39,7 +39,8 @@ export default function AttendanceLayout({
 
         <div className="inline-flex rounded-full bg-muted p-1">
           {tabs.map((tab) => {
-            const active = pathname === tab.href;
+            const active =
+              pathname === tab.href || pathname.startsWith(`${tab.href}/`);
             return (
               <Link
                 key={tab.href}

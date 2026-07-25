@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { Loader2, QrCode } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -441,6 +442,14 @@ export default function StaffAttendancePage() {
           </Button>
           <Button type="button" variant="outline" onClick={() => shiftMonth(1)}>
             Next
+          </Button>
+        </div>
+        <div className="ml-auto">
+          <Button variant="outline" asChild>
+            <Link href="/dashboard/school/attendance/staff/qr">
+              <QrCode className="mr-1 h-4 w-4" />
+              Punch QR poster
+            </Link>
           </Button>
         </div>
       </div>
