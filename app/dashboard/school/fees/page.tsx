@@ -2,7 +2,13 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowDown, ArrowUp, ArrowUpDown, Pencil } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  FileText,
+  Pencil,
+} from "lucide-react";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { StudentEditSheet } from "@/components/students/student-edit-sheet";
 import { Button } from "@/components/ui/button";
@@ -28,6 +34,11 @@ import {
 import { schoolApi } from "@/lib/api/school";
 import { errorMessage, isSubscriptionInactive } from "@/lib/api/subscription";
 import { CLASS_LEVELS, formatClassLabel } from "@/lib/class-levels";
+import {
+  buildStudentDueNotice,
+  studentsWithDues,
+  type FeeNoticeStudent,
+} from "@/lib/fee-notice";
 import { cn } from "@/lib/utils";
 
 type FeeStatus = "PAID" | "PARTIAL" | "UNPAID" | "WAIVED";
@@ -51,6 +62,7 @@ type MonthCell = {
 };
 type SortKey = "name" | "class" | string; // month keys look like "2026-04"
 type SortDir = "asc" | "desc";
+type NoticeMode = "single" | "selected" | "bulk";
 
 const ALL_CLASSES = "__all__";
 
@@ -401,6 +413,15 @@ function FeesPageContent() {
   const [editStudentId, setEditStudentId] = useState<string | null>(null);
   const [hoverRowId, setHoverRowId] = useState<string | null>(null);
   const [hoverColKey, setHoverColKey] = useState<string | null>(null);
+  const [noticeOpen, setNoticeOpen] = useState(false);
+  const [noticeMode, setNoticeMode] = useState<NoticeMode>("bulk");
+  const [noticeStudentId, setNoticeStudentId] = useState("");
+  const [noticeSelectedIds, setNoticeSelectedIds] = useState<string[]>([]);
+  const [noticeUpToKey, setNoticeUpToKey] = useState("");
+  const [noticeDueDate, setNoticeDueDate] = useState("");
+  const [noticeError, setNoticeError] = useState("");
+  const [rowSelectedIds, setRowSelectedIds] = useState<string[]>([]);
+  const [generatingNotice, setGeneratingNotice] = useState(false);
 
   const handleErr = useCallback(
     (err: unknown, fallback: string) => {
@@ -475,6 +496,17 @@ function FeesPageContent() {
       return str(s.name).toLowerCase().includes(q);
     });
   }, [students, filterClassId, nameQuery, focusStudentId]);
+
+  const visibleSelectedIds = useMemo(() => {
+    const visible = new Set(
+      filteredStudents.map((s) => str(s.studentProfileId)),
+    );
+    return rowSelectedIds.filter((id) => visible.has(id));
+  }, [filteredStudents, rowSelectedIds]);
+
+  const allVisibleSelected =
+    filteredStudents.length > 0 &&
+    visibleSelectedIds.length === filteredStudents.length;
 
   const sortedStudents = useMemo(() => {
     if (!sortKey) return filteredStudents;
@@ -705,8 +737,8 @@ function FeesPageContent() {
   function hoverBg(rowId: string | null, colKey?: string): string {
     const rowOn = rowId != null && hoverRowId === rowId;
     const colOn = colKey != null && hoverColKey === colKey;
-    if (rowOn && colOn) return "bg-sky-200";
-    if (rowOn || colOn) return "bg-sky-100";
+    if (rowOn && colOn) return "bg-sky-100";
+    if (rowOn || colOn) return "bg-sky-50";
     return "";
   }
 
@@ -718,6 +750,124 @@ function FeesPageContent() {
   function clearHover() {
     setHoverRowId(null);
     setHoverColKey(null);
+  }
+
+  function defaultNoticeMonth(): string {
+    const now = new Date();
+    const currentKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    return months.some((month) => month.key === currentKey)
+      ? currentKey
+      : (months.at(-1)?.key ?? "");
+  }
+
+  function toggleRowSelected(studentId: string, checked: boolean) {
+    setRowSelectedIds((prev) => {
+      if (checked) {
+        return prev.includes(studentId) ? prev : [...prev, studentId];
+      }
+      return prev.filter((id) => id !== studentId);
+    });
+  }
+
+  function toggleSelectAllVisible(checked: boolean) {
+    const visibleIds = filteredStudents.map((s) => str(s.studentProfileId));
+    setRowSelectedIds((prev) => {
+      if (checked) {
+        const merged = new Set([...prev, ...visibleIds]);
+        return [...merged];
+      }
+      const drop = new Set(visibleIds);
+      return prev.filter((id) => !drop.has(id));
+    });
+  }
+
+  function openNoticeDialog(mode: NoticeMode, studentId = "") {
+    setNoticeMode(mode);
+    setNoticeStudentId(studentId);
+    setNoticeSelectedIds(
+      mode === "selected"
+        ? visibleSelectedIds
+        : mode === "single" && studentId
+          ? [studentId]
+          : [],
+    );
+    setNoticeUpToKey(defaultNoticeMonth());
+    setNoticeDueDate("");
+    setNoticeError("");
+    setNoticeOpen(true);
+  }
+
+  function openDueNoticeFromHeader() {
+    if (visibleSelectedIds.length > 0) {
+      openNoticeDialog("selected");
+      return;
+    }
+    openNoticeDialog("bulk");
+  }
+
+  async function generateNotice() {
+    setNoticeError("");
+    if (!noticeUpToKey) {
+      setNoticeError("Select the month up to which dues should be included.");
+      return;
+    }
+    if (!noticeDueDate) {
+      setNoticeError("Select a due date.");
+      return;
+    }
+
+    const noticeStudents = filteredStudents as FeeNoticeStudent[];
+    const notices =
+      noticeMode === "single"
+        ? (() => {
+            const student = noticeStudents.find(
+              (row) => str(row.studentProfileId) === noticeStudentId,
+            );
+            if (!student) return [];
+            const notice = buildStudentDueNotice(
+              student,
+              months,
+              noticeUpToKey,
+            );
+            return notice ? [notice] : [];
+          })()
+        : noticeMode === "selected"
+          ? (() => {
+              const selected = new Set(noticeSelectedIds);
+              const chosen = (students as FeeNoticeStudent[]).filter((row) =>
+                selected.has(str(row.studentProfileId)),
+              );
+              return studentsWithDues(chosen, months, noticeUpToKey);
+            })()
+          : studentsWithDues(noticeStudents, months, noticeUpToKey);
+
+    if (notices.length === 0) {
+      setNoticeError(
+        noticeMode === "single"
+          ? "This student has no unpaid or partial fees in the selected period."
+          : noticeMode === "selected"
+            ? "None of the selected students have unpaid or partial fees in the selected period."
+            : "No students in the current filtered list have dues in the selected period.",
+      );
+      return;
+    }
+
+    setGeneratingNotice(true);
+    try {
+      const { generateFeeNoticePdf } = await import(
+        "@/lib/fee-notice-pdf"
+      );
+      await generateFeeNoticePdf({
+        notices,
+        dueDate: noticeDueDate,
+        mode: notices.length === 1 ? "single" : "bulk",
+      });
+      setNoticeOpen(false);
+    } catch (err) {
+      setNoticeError(errorMessage(err, "Failed to generate fee due notice"));
+    } finally {
+      setGeneratingNotice(false);
+    }
   }
 
   return (
@@ -778,6 +928,17 @@ function FeesPageContent() {
               ))}
             </SelectContent>
           </Select>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={openDueNoticeFromHeader}
+            disabled={loading || filteredStudents.length === 0}
+          >
+            <FileText data-icon="inline-start" />
+            {visibleSelectedIds.length > 0
+              ? `Issue Due Fee Notice (${visibleSelectedIds.length})`
+              : "Issue Due Fee Notice"}
+          </Button>
         </div>
 
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
@@ -805,7 +966,28 @@ function FeesPageContent() {
                 <thead>
                   <tr className="bg-muted">
                     <th
-                      className="sticky left-0 top-0 z-30 w-10 min-w-10 max-w-10 bg-muted px-1 py-2 text-center font-medium shadow-[0_1px_0_0_hsl(var(--border))]"
+                      className="sticky left-0 top-0 z-30 w-8 min-w-8 max-w-8 bg-muted px-1 py-2 text-center shadow-[0_1px_0_0_hsl(var(--border))]"
+                      onMouseEnter={clearHover}
+                    >
+                      <input
+                        type="checkbox"
+                        className="size-3.5 accent-foreground"
+                        checked={allVisibleSelected}
+                        ref={(el) => {
+                          if (el) {
+                            el.indeterminate =
+                              visibleSelectedIds.length > 0 &&
+                              !allVisibleSelected;
+                          }
+                        }}
+                        onChange={(e) =>
+                          toggleSelectAllVisible(e.target.checked)
+                        }
+                        aria-label="Select all visible students"
+                      />
+                    </th>
+                    <th
+                      className="sticky left-8 top-0 z-30 w-10 min-w-10 max-w-10 bg-muted px-1 py-2 text-center font-medium shadow-[0_1px_0_0_hsl(var(--border))]"
                       onMouseEnter={clearHover}
                     >
                       #
@@ -814,7 +996,7 @@ function FeesPageContent() {
                       <SortableHead
                         label="Class"
                         column="class"
-                        className="sticky left-10 top-0 z-30 w-28 min-w-28 max-w-28 bg-muted px-3 py-2 text-left shadow-[0_1px_0_0_hsl(var(--border))]"
+                        className="sticky left-[4.5rem] top-0 z-30 w-28 min-w-28 max-w-28 bg-muted px-3 py-2 text-left shadow-[0_1px_0_0_hsl(var(--border))]"
                         onMouseEnter={clearHover}
                       />
                     ) : null}
@@ -823,14 +1005,14 @@ function FeesPageContent() {
                       column="name"
                       className={cn(
                         "sticky top-0 z-30 w-40 min-w-40 max-w-40 bg-muted px-3 py-2 text-left shadow-[0_1px_0_0_hsl(var(--border))]",
-                        showClassColumn ? "left-[9.5rem]" : "left-10",
+                        showClassColumn ? "left-[11.5rem]" : "left-[4.5rem]",
                       )}
                       onMouseEnter={clearHover}
                     />
                     <th
                       className={cn(
                         "sticky top-0 z-30 w-16 min-w-16 max-w-16 bg-muted px-2 py-2 text-left font-medium shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12),0_1px_0_0_hsl(var(--border))]",
-                        showClassColumn ? "left-[19.5rem]" : "left-[12.5rem]",
+                        showClassColumn ? "left-[21.5rem]" : "left-[14.5rem]",
                       )}
                       onMouseEnter={clearHover}
                     >
@@ -844,7 +1026,7 @@ function FeesPageContent() {
                         title={`${mo.label} · Unpaid first through later months, then each month's own payment date`}
                         className={cn(
                           "sticky top-0 z-20 min-w-[4rem] px-1 py-2 text-center shadow-[0_1px_0_0_hsl(var(--border))]",
-                          hoverColKey === mo.key ? "bg-sky-200" : "bg-muted",
+                          hoverColKey === mo.key ? "bg-sky-100" : "bg-muted",
                         )}
                         onMouseEnter={() => setHover(null, mo.key)}
                       />
@@ -862,7 +1044,24 @@ function FeesPageContent() {
                       <tr key={id}>
                         <td
                           className={cn(
-                            "sticky left-0 z-10 w-10 min-w-10 max-w-10 border-t px-1 py-1 text-center text-muted-foreground",
+                            "sticky left-0 z-10 w-8 min-w-8 max-w-8 border-t px-1 py-1 text-center",
+                            hoverBg(id) || "bg-background",
+                          )}
+                          onMouseEnter={() => setHover(id, null)}
+                        >
+                          <input
+                            type="checkbox"
+                            className="size-3.5 accent-foreground"
+                            checked={rowSelectedIds.includes(id)}
+                            onChange={(e) =>
+                              toggleRowSelected(id, e.target.checked)
+                            }
+                            aria-label={`Select ${str(s.name)}`}
+                          />
+                        </td>
+                        <td
+                          className={cn(
+                            "sticky left-8 z-10 w-10 min-w-10 max-w-10 border-t px-1 py-1 text-center text-muted-foreground",
                             hoverBg(id) || "bg-background",
                           )}
                           onMouseEnter={() => setHover(id, null)}
@@ -872,7 +1071,7 @@ function FeesPageContent() {
                         {showClassColumn ? (
                           <td
                             className={cn(
-                              "sticky left-10 z-10 w-28 min-w-28 max-w-28 truncate border-t px-3 py-1",
+                              "sticky left-[4.5rem] z-10 w-28 min-w-28 max-w-28 truncate border-t px-3 py-1",
                               hoverBg(id) || "bg-background",
                             )}
                             title={classLabel(s)}
@@ -884,7 +1083,7 @@ function FeesPageContent() {
                         <td
                           className={cn(
                             "sticky z-10 w-40 min-w-40 max-w-40 border-t px-3 py-1 font-medium",
-                            showClassColumn ? "left-[9.5rem]" : "left-10",
+                            showClassColumn ? "left-[11.5rem]" : "left-[4.5rem]",
                             hoverBg(id) || "bg-background",
                           )}
                           title={str(s.name)}
@@ -900,13 +1099,22 @@ function FeesPageContent() {
                             >
                               <Pencil className="h-3.5 w-3.5" />
                             </button>
+                            <button
+                              type="button"
+                              onClick={() => openNoticeDialog("single", id)}
+                              className="inline-flex shrink-0 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                              title="Generate fee due notice"
+                              aria-label={`Generate fee due notice for ${str(s.name)}`}
+                            >
+                              <FileText className="h-3.5 w-3.5" />
+                            </button>
                             <span className="truncate">{str(s.name)}</span>
                           </span>
                         </td>
                         <td
                           className={cn(
                             "sticky z-10 w-16 min-w-16 max-w-16 border-t px-2 py-1 text-muted-foreground shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)]",
-                            showClassColumn ? "left-[19.5rem]" : "left-[12.5rem]",
+                            showClassColumn ? "left-[21.5rem]" : "left-[14.5rem]",
                             hoverBg(id) || "bg-background",
                           )}
                           onMouseEnter={() => setHover(id, null)}
@@ -998,6 +1206,188 @@ function FeesPageContent() {
             </div>
           )}
         </div>
+
+        <Dialog
+          open={noticeOpen}
+          onOpenChange={(open) => {
+            setNoticeOpen(open);
+            if (!open) setNoticeError("");
+          }}
+        >
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Generate fee due notice</DialogTitle>
+              <DialogDescription>
+                Create a bilingual English and Hindi PDF for one student,
+                selected students, or everyone with dues in the current
+                filtered list.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <div className="space-y-1">
+                <Label>Notice for</Label>
+                <Select
+                  value={noticeMode}
+                  onValueChange={(value) => {
+                    const mode = value as NoticeMode;
+                    setNoticeMode(mode);
+                    setNoticeError("");
+                    if (mode === "single" && !noticeStudentId) {
+                      setNoticeStudentId(
+                        str(filteredStudents[0]?.studentProfileId),
+                      );
+                    }
+                    if (mode === "selected") {
+                      setNoticeSelectedIds(
+                        visibleSelectedIds.length > 0
+                          ? visibleSelectedIds
+                          : noticeStudentId
+                            ? [noticeStudentId]
+                            : [],
+                      );
+                    }
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="single">One student</SelectItem>
+                    <SelectItem
+                      value="selected"
+                      disabled={
+                        visibleSelectedIds.length === 0 &&
+                        noticeSelectedIds.length === 0
+                      }
+                    >
+                      Selected students
+                      {visibleSelectedIds.length > 0
+                        ? ` (${visibleSelectedIds.length})`
+                        : noticeSelectedIds.length > 0
+                          ? ` (${noticeSelectedIds.length})`
+                          : ""}
+                    </SelectItem>
+                    <SelectItem value="bulk">All students with dues</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {noticeMode === "single" ? (
+                <div className="space-y-1">
+                  <Label>Student</Label>
+                  <Select
+                    value={noticeStudentId}
+                    onValueChange={setNoticeStudentId}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select student" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {filteredStudents.map((student) => (
+                        <SelectItem
+                          key={str(student.studentProfileId)}
+                          value={str(student.studentProfileId)}
+                        >
+                          {str(student.name)} · {classLabel(student, true)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : noticeMode === "selected" ? (
+                <div className="space-y-2">
+                  <p className="rounded-lg bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+                    {noticeSelectedIds.length === 0
+                      ? "Tick students in the fees table, then open Issue Due Fee Notice again."
+                      : `PDF will include ${noticeSelectedIds.length} selected student${noticeSelectedIds.length === 1 ? "" : "s"} who have an unpaid or partial balance.`}
+                  </p>
+                  {noticeSelectedIds.length > 0 ? (
+                    <ul className="max-h-36 space-y-1 overflow-y-auto rounded-lg border px-3 py-2 text-sm">
+                      {students
+                        .filter((student) =>
+                          noticeSelectedIds.includes(
+                            str(student.studentProfileId),
+                          ),
+                        )
+                        .map((student) => (
+                          <li key={str(student.studentProfileId)}>
+                            {str(student.name)} · {classLabel(student, true)}
+                          </li>
+                        ))}
+                    </ul>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="rounded-lg bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+                  The PDF will include students matching the current search
+                  and class filters who have an unpaid or partial balance.
+                </p>
+              )}
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Label>Include dues up to</Label>
+                  <Select
+                    value={noticeUpToKey}
+                    onValueChange={setNoticeUpToKey}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select month" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {months.map((month) => (
+                        <SelectItem key={month.key} value={month.key}>
+                          {monthYearLabel(month.year, month.month)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1">
+                  <Label htmlFor="fee-notice-due-date">Due date</Label>
+                  <Input
+                    id="fee-notice-due-date"
+                    type="date"
+                    value={noticeDueDate}
+                    onChange={(event) => setNoticeDueDate(event.target.value)}
+                  />
+                </div>
+              </div>
+
+              {noticeError ? (
+                <p className="text-sm text-destructive">{noticeError}</p>
+              ) : null}
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setNoticeOpen(false)}
+                disabled={generatingNotice}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={() => void generateNotice()}
+                disabled={
+                  generatingNotice ||
+                  !noticeUpToKey ||
+                  !noticeDueDate ||
+                  (noticeMode === "single" && !noticeStudentId) ||
+                  (noticeMode === "selected" && noticeSelectedIds.length === 0)
+                }
+              >
+                {generatingNotice
+                  ? "Issuing notice..."
+                  : "Issue Due Fee Notice"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <Dialog
           open={editor != null}

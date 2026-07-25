@@ -99,7 +99,7 @@ export function DashboardShell({
 
   return (
     <div className="min-h-screen bg-muted/30">
-      <div className="mx-auto flex min-h-screen max-w-7xl gap-6 p-4 md:p-6">
+      <div className="flex min-h-screen gap-6 p-4 md:p-6">
         <aside className="hidden w-64 shrink-0 rounded-2xl border bg-card p-4 md:block">
           <div className="mb-6">
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
