@@ -89,10 +89,26 @@ export function DashboardShell({
     }
   }, [user, loading, router, allowedRoles]);
 
-  if (loading || !user || !allowedRoles.includes(user.role)) {
+  if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">
         Loading dashboard...
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">
+        Redirecting...
+      </div>
+    );
+  }
+
+  if (!allowedRoles.includes(user.role)) {
+    return (
+      <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">
+        Redirecting...
       </div>
     );
   }

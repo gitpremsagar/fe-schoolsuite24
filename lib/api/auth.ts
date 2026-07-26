@@ -1,4 +1,4 @@
-import { apiFetch } from "@/lib/api/client";
+import { apiFetch, refreshAccessToken, ApiRequestError } from "@/lib/api/client";
 import { setAccessToken, clearAccessToken } from "@/lib/auth/session";
 import type { AuthResponse, PublicUser } from "@/lib/types";
 
@@ -30,12 +30,11 @@ export async function logout() {
   }
 }
 
-export async function refreshSession() {
-  const data = await apiFetch<AuthResponse>("/auth/refresh", {
-    method: "POST",
-    auth: false,
-  });
-  setAccessToken(data.accessToken);
+export async function refreshSession(): Promise<AuthResponse> {
+  const data = await refreshAccessToken();
+  if (!data) {
+    throw new ApiRequestError(401, "Refresh token missing or invalid");
+  }
   return data;
 }
 

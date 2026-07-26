@@ -6,10 +6,24 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useState,
 } from "react";
-import { getMe, login as apiLogin, logout as apiLogout, refreshSession, registerSchool } from "@/lib/api/auth";
-import { clearAccessToken, getAccessToken } from "@/lib/auth/session";
+import { useRouter } from "next/navigation";
+import {
+  getMe,
+  login as apiLogin,
+  logout as apiLogout,
+  refreshSession,
+  registerSchool,
+} from "@/lib/api/auth";
+import { onUnauthorized } from "@/lib/api/client";
+import { useAppDispatch, useAppSelector } from "@/lib/store/hooks";
+import {
+  clearAuth,
+  setCredentials,
+  setLoading,
+  setUnauthenticated,
+  setUser,
+} from "@/lib/store/auth-slice";
 import type { PublicUser } from "@/lib/types";
 
 type AuthContextValue = {
@@ -24,41 +38,51 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<PublicUser | null>(null);
-  const [loading, setLoading] = useState(true);
+  const dispatch = useAppDispatch();
+  const router = useRouter();
+  const user = useAppSelector((s) => s.auth.user);
+  const status = useAppSelector((s) => s.auth.status);
+  const loading = status === "idle" || status === "loading";
 
   const refreshUser = useCallback(async () => {
     const me = await getMe();
-    setUser(me.user as PublicUser);
-  }, []);
+    dispatch(setUser(me.user as PublicUser));
+  }, [dispatch]);
 
   useEffect(() => {
     let cancelled = false;
     async function bootstrap() {
+      dispatch(setLoading());
       try {
-        const token = getAccessToken();
-        if (!token) {
-          try {
-            const refreshed = await refreshSession();
-            if (!cancelled) setUser(refreshed.user);
-          } catch {
-            if (!cancelled) setUser(null);
-          }
-        } else {
-          await refreshUser();
-        }
+        // Cookie is the only durable credential; always try refresh.
+        const refreshed = await refreshSession();
+        if (cancelled) return;
+        dispatch(
+          setCredentials({
+            accessToken: refreshed.accessToken,
+            user: refreshed.user,
+          }),
+        );
       } catch {
-        clearAccessToken();
-        if (!cancelled) setUser(null);
-      } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) dispatch(setUnauthenticated());
       }
     }
     void bootstrap();
     return () => {
       cancelled = true;
     };
-  }, [refreshUser]);
+  }, [dispatch]);
+
+  useEffect(() => {
+    return onUnauthorized(() => {
+      dispatch(clearAuth());
+      if (typeof window !== "undefined") {
+        const path = window.location.pathname;
+        if (path === "/login" || path === "/register") return;
+      }
+      router.replace("/login");
+    });
+  }, [dispatch, router]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -66,21 +90,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       loading,
       async login(email, password) {
         const data = await apiLogin(email, password);
-        setUser(data.user);
+        dispatch(
+          setCredentials({
+            accessToken: data.accessToken,
+            user: data.user,
+          }),
+        );
         return data.user;
       },
       async register(body) {
         const data = await registerSchool(body);
-        setUser(data.user);
+        dispatch(
+          setCredentials({
+            accessToken: data.accessToken,
+            user: data.user,
+          }),
+        );
         return data.user;
       },
       async logout() {
         await apiLogout();
-        setUser(null);
+        dispatch(clearAuth());
       },
       refreshUser,
     }),
-    [user, loading, refreshUser],
+    [user, loading, refreshUser, dispatch],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
