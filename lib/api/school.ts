@@ -25,12 +25,65 @@ export const schoolApi = {
     },
     mine: () =>
       apiFetch<{ classes: Array<Record<string, unknown>> }>("/classes/mine"),
+    get: (id: string) =>
+      apiFetch<{ class: Record<string, unknown> }>(`/classes/${id}`),
+    getTimetable: (id: string) =>
+      apiFetch<{
+        periodCount: number;
+        recessAfter: number[];
+        saturdayIsWorkingDay: boolean;
+        slots: Array<Record<string, unknown>>;
+      }>(`/classes/${id}/timetable`),
+    setTimetable: (
+      id: string,
+      body: {
+        slots: Array<{
+          dayOfWeek: number;
+          periodIndex: number;
+          subjectId: string;
+        }>;
+      },
+    ) =>
+      apiFetch<{
+        periodCount: number;
+        recessAfter: number[];
+        saturdayIsWorkingDay: boolean;
+        slots: Array<Record<string, unknown>>;
+      }>(`/classes/${id}/timetable`, { method: "PUT", body }),
     create: (body: Record<string, unknown>) =>
       apiFetch("/classes", { method: "POST", body }),
     update: (id: string, body: Record<string, unknown>) =>
-      apiFetch(`/classes/${id}`, { method: "PATCH", body }),
+      apiFetch<{ class: Record<string, unknown> }>(`/classes/${id}`, {
+        method: "PATCH",
+        body,
+      }),
+    setSubjects: (
+      id: string,
+      body: {
+        subjects: Array<{
+          subjectId: string;
+          staffProfileId?: string | null;
+        }>;
+      },
+    ) => apiFetch(`/classes/${id}/subjects`, { method: "PUT", body }),
     assignTeacher: (id: string, body: Record<string, unknown>) =>
       apiFetch(`/classes/${id}/teachers`, { method: "POST", body }),
+  },
+  subjects: {
+    list: () =>
+      apiFetch<{ subjects: Array<Record<string, unknown>> }>("/subjects"),
+    create: (body: { name: string }) =>
+      apiFetch<{ subject: Record<string, unknown> }>("/subjects", {
+        method: "POST",
+        body,
+      }),
+    update: (id: string, body: { name: string }) =>
+      apiFetch<{ subject: Record<string, unknown> }>(`/subjects/${id}`, {
+        method: "PATCH",
+        body,
+      }),
+    remove: (id: string) =>
+      apiFetch<{ ok: boolean }>(`/subjects/${id}`, { method: "DELETE" }),
   },
   students: {
     list: (opts?: { academicYearId?: string; all?: boolean }) => {

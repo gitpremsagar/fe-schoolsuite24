@@ -30,7 +30,12 @@ function fmtTime(v: unknown): string {
     : d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
 }
 
-export function PunchCard() {
+export function PunchCard({
+  punchInViaQrOnly = false,
+}: {
+  /** When true, hide the punch-in button and tell the user to scan the school QR. */
+  punchInViaQrOnly?: boolean;
+}) {
   const [attendance, setAttendance] = useState<Row | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -86,7 +91,11 @@ export function PunchCard() {
     <Card className="max-w-md">
       <CardHeader>
         <CardTitle>Today&apos;s attendance</CardTitle>
-        <CardDescription>Record your punch in and punch out.</CardDescription>
+        <CardDescription>
+          {punchInViaQrOnly
+            ? "Punch in by scanning the school QR code in the teacher app. You can punch out here afterward."
+            : "Record your punch in and punch out."}
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
@@ -125,19 +134,38 @@ export function PunchCard() {
             </div>
 
             <div className="flex gap-2">
-              <Button
-                onClick={doPunchIn}
-                disabled={busy || hasPunchedIn}
-              >
-                Punch in
-              </Button>
-              <Button
-                variant="outline"
-                onClick={doPunchOut}
-                disabled={busy || !hasPunchedIn || hasPunchedOut}
-              >
-                Punch out
-              </Button>
+              {punchInViaQrOnly ? (
+                !hasPunchedIn ? (
+                  <p className="text-sm text-muted-foreground">
+                    Use the SchoolSuite Teacher app to scan the school QR poster
+                    to punch in.
+                  </p>
+                ) : (
+                  <Button
+                    variant="outline"
+                    onClick={doPunchOut}
+                    disabled={busy || hasPunchedOut}
+                  >
+                    Punch out
+                  </Button>
+                )
+              ) : (
+                <>
+                  <Button
+                    onClick={doPunchIn}
+                    disabled={busy || hasPunchedIn}
+                  >
+                    Punch in
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={doPunchOut}
+                    disabled={busy || !hasPunchedIn || hasPunchedOut}
+                  >
+                    Punch out
+                  </Button>
+                </>
+              )}
             </div>
           </>
         )}

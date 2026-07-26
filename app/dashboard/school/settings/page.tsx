@@ -39,6 +39,7 @@ export default function SettingsPage() {
   const router = useRouter();
   const [form, setForm] = useState<Record<string, string>>({});
   const [establishedYear, setEstablishedYear] = useState("");
+  const [saturdayIsWorkingDay, setSaturdayIsWorkingDay] = useState(true);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
@@ -67,6 +68,7 @@ export default function SettingsPage() {
         for (const f of FIELDS) next[f.key] = str(school[f.key]);
         setForm(next);
         setEstablishedYear(str(school.establishedYear));
+        setSaturdayIsWorkingDay(school.saturdayIsWorkingDay !== false);
       })
       .catch((err) => {
         if (active) handleErr(err, "Failed to load school");
@@ -92,6 +94,7 @@ export default function SettingsPage() {
       const body: Record<string, unknown> = {};
       for (const f of FIELDS) body[f.key] = form[f.key] ?? "";
       body.establishedYear = establishedYear ? Number(establishedYear) : null;
+      body.saturdayIsWorkingDay = saturdayIsWorkingDay;
       body.adminPassword = adminPassword;
       await schoolApi.updateMe(body);
       setMessage("School profile updated.");
@@ -144,6 +147,18 @@ export default function SettingsPage() {
                     value={establishedYear}
                     onChange={(e) => setEstablishedYear(e.target.value)}
                   />
+                </div>
+                <div className="flex items-end md:col-span-2">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={saturdayIsWorkingDay}
+                      onChange={(e) =>
+                        setSaturdayIsWorkingDay(e.target.checked)
+                      }
+                    />
+                    Saturday is a working day
+                  </label>
                 </div>
                 <div className="space-y-1 md:col-span-2">
                   <Label>

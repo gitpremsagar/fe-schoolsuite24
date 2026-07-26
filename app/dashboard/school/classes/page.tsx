@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Button } from "@/components/ui/button";
@@ -31,9 +32,13 @@ import {
 } from "@/components/ui/table";
 import { schoolApi } from "@/lib/api/school";
 import { errorMessage, isSubscriptionInactive } from "@/lib/api/subscription";
-import { CLASS_LEVELS } from "@/lib/class-levels";
+import { CLASS_LEVELS, formatClassLabel } from "@/lib/class-levels";
 
 type Row = Record<string, unknown>;
+/** subjectId → staffProfileId (null = no teacher assigned) */
+type SubjectTeacherMap = Record<string, string | null>;
+
+const NO_TEACHER = "__none__";
 
 function str(v: unknown): string {
   return v == null ? "" : String(v);
@@ -57,11 +62,19 @@ function teacherNameFromClass(c: Row): string {
   return str(user.name) || "—";
 }
 
+function subjectsPayload(map: SubjectTeacherMap) {
+  return Object.entries(map).map(([subjectId, staffProfileId]) => ({
+    subjectId,
+    staffProfileId,
+  }));
+}
+
 export default function ClassesPage() {
   const router = useRouter();
   const [years, setYears] = useState<Row[]>([]);
   const [classes, setClasses] = useState<Row[]>([]);
   const [teachers, setTeachers] = useState<Row[]>([]);
+  const [subjects, setSubjects] = useState<Row[]>([]);
   const [filterYear, setFilterYear] = useState<string>("ALL");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -72,7 +85,10 @@ export default function ClassesPage() {
     classLevel: "",
     section: "",
     monthlyFee: "",
+    subjectTeachers: {} as SubjectTeacherMap,
   });
+  const [newSubjectName, setNewSubjectName] = useState("");
+  const [addingSubject, setAddingSubject] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editFee, setEditFee] = useState("");
@@ -107,18 +123,25 @@ export default function ClassesPage() {
     [handleErr],
   );
 
+  const loadSubjects = useCallback(async () => {
+    const res = await schoolApi.subjects.list();
+    setSubjects(res.subjects);
+  }, []);
+
   useEffect(() => {
     let active = true;
     (async () => {
       setLoading(true);
       try {
-        const [yr, staffRes] = await Promise.all([
+        const [yr, staffRes, subjectsRes] = await Promise.all([
           schoolApi.academicYears.list(),
           schoolApi.staff.list("TEACHER"),
+          schoolApi.subjects.list(),
         ]);
         if (!active) return;
         setYears(yr.academicYears);
         setTeachers(staffRes.staff);
+        setSubjects(subjectsRes.subjects);
         const current = yr.academicYears.find((y) => y.isCurrent);
         if (current) {
           setForm((p) => ({ ...p, academicYearId: str(current.id) }));
@@ -134,6 +157,54 @@ export default function ClassesPage() {
       active = false;
     };
   }, [handleErr, loadClasses]);
+
+  function toggleFormSubject(subjectId: string) {
+    setForm((prev) => {
+      const next = { ...prev.subjectTeachers };
+      if (Object.prototype.hasOwnProperty.call(next, subjectId)) {
+        delete next[subjectId];
+      } else {
+        next[subjectId] = null;
+      }
+      return { ...prev, subjectTeachers: next };
+    });
+  }
+
+  function setFormSubjectTeacher(subjectId: string, staffProfileId: string) {
+    setForm((prev) => ({
+      ...prev,
+      subjectTeachers: {
+        ...prev.subjectTeachers,
+        [subjectId]: staffProfileId === NO_TEACHER ? null : staffProfileId,
+      },
+    }));
+  }
+
+  async function onAddSubjectInline() {
+    const trimmed = newSubjectName.trim();
+    if (!trimmed) return;
+    setAddingSubject(true);
+    setError("");
+    try {
+      const res = await schoolApi.subjects.create({ name: trimmed });
+      const id = str(res.subject.id);
+      setNewSubjectName("");
+      await loadSubjects();
+      setForm((p) => ({
+        ...p,
+        subjectTeachers: Object.prototype.hasOwnProperty.call(
+          p.subjectTeachers,
+          id,
+        )
+          ? p.subjectTeachers
+          : { ...p.subjectTeachers, [id]: null },
+      }));
+    } catch (err) {
+      handleErr(err, "Failed to create subject");
+    } finally {
+      setAddingSubject(false);
+    }
+  }
 
   async function onCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -153,13 +224,16 @@ export default function ClassesPage() {
         classLevel: form.classLevel,
         ...(form.section ? { section: form.section } : {}),
         monthlyFee: fee,
+        subjects: subjectsPayload(form.subjectTeachers),
       });
       setForm((p) => ({
         ...p,
         classLevel: "",
         section: "",
         monthlyFee: "",
+        subjectTeachers: {},
       }));
+      setNewSubjectName("");
       setShowForm(false);
       setMessage("Class created.");
       await loadClasses(filterYear);
@@ -215,6 +289,31 @@ export default function ClassesPage() {
     }
   }
 
+  function renderTeacherSelect(
+    subjectId: string,
+    value: string | null | undefined,
+    onChange: (staffProfileId: string) => void,
+  ) {
+    return (
+      <Select value={value || NO_TEACHER} onValueChange={onChange}>
+        <SelectTrigger className="h-8 w-40">
+          <SelectValue placeholder="Teacher" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={NO_TEACHER}>No teacher</SelectItem>
+          {teachers.map((t) => {
+            const user = obj(t.user);
+            return (
+              <SelectItem key={str(t.id)} value={str(t.id)}>
+                {str(user.name)}
+              </SelectItem>
+            );
+          })}
+        </SelectContent>
+      </Select>
+    );
+  }
+
   return (
     <DashboardShell allowedRoles={["ADMIN"]}>
       <div className="space-y-6">
@@ -222,8 +321,8 @@ export default function ClassesPage() {
           <div>
             <h1 className="text-2xl font-semibold">Classes</h1>
             <p className="text-sm text-muted-foreground">
-              Classes are identified by class level and section. Set monthly fee
-              per class.
+              Classes are identified by class level and section. Open a class to
+              view subjects and students.
             </p>
           </div>
           <Button
@@ -244,6 +343,7 @@ export default function ClassesPage() {
               <CardTitle>New class</CardTitle>
               <CardDescription>
                 Choose a class level and optional section for an academic year.
+                Assign subjects and the teacher for each subject.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -317,6 +417,67 @@ export default function ClassesPage() {
                       }
                     />
                   </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Subjects</Label>
+                    <div className="max-h-56 space-y-1 overflow-y-auto rounded-lg border p-2">
+                      {subjects.length === 0 ? (
+                        <p className="px-1 py-2 text-sm text-muted-foreground">
+                          No subjects yet. Add one below.
+                        </p>
+                      ) : (
+                        subjects.map((s) => {
+                          const id = str(s.id);
+                          const checked =
+                            Object.prototype.hasOwnProperty.call(
+                              form.subjectTeachers,
+                              id,
+                            );
+                          return (
+                            <div
+                              key={id}
+                              className="flex flex-wrap items-center gap-2 rounded px-1 py-1 text-sm hover:bg-muted/50"
+                            >
+                              <label className="flex min-w-[140px] cursor-pointer items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => toggleFormSubject(id)}
+                                />
+                                {str(s.name)}
+                              </label>
+                              {checked
+                                ? renderTeacherSelect(
+                                    id,
+                                    form.subjectTeachers[id],
+                                    (v) => setFormSubjectTeacher(id, v),
+                                  )
+                                : null}
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                    <div className="flex flex-wrap items-end gap-2">
+                      <div className="min-w-[180px] flex-1 space-y-1">
+                        <Label className="text-muted-foreground">
+                          Add new subject
+                        </Label>
+                        <Input
+                          value={newSubjectName}
+                          placeholder="e.g. Mathematics"
+                          onChange={(e) => setNewSubjectName(e.target.value)}
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={addingSubject || !newSubjectName.trim()}
+                        onClick={() => void onAddSubjectInline()}
+                      >
+                        {addingSubject ? "Adding..." : "Add subject"}
+                      </Button>
+                    </div>
+                  </div>
                   <div className="flex items-end md:col-span-2">
                     <Button
                       type="submit"
@@ -384,113 +545,125 @@ export default function ClassesPage() {
                     </TableRow>
                   ) : (
                     classes.map((c) => {
-                    const year = obj(c.academicYear);
-                    const count = obj(c._count);
-                    const id = str(c.id);
-                    const isEditing = editingId === id;
-                    return (
-                      <TableRow key={id}>
-                        <TableCell className="font-medium">
-                          {str(c.classLevel)}
-                        </TableCell>
-                        <TableCell>{str(c.section) || "—"}</TableCell>
-                        <TableCell>
-                          {isEditing ? (
-                            <div className="flex items-center gap-2">
-                              <Input
-                                type="number"
-                                min={0}
-                                step="0.01"
-                                className="h-8 w-28"
-                                value={editFee}
-                                onChange={(e) => setEditFee(e.target.value)}
-                              />
-                              <Button
-                                type="button"
-                                size="sm"
-                                disabled={savingFee}
-                                onClick={() => void saveMonthlyFee(id)}
-                              >
-                                Save
-                              </Button>
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => setEditingId(null)}
-                              >
-                                Cancel
-                              </Button>
-                            </div>
-                          ) : (
-                            <button
-                              type="button"
-                              className="text-left hover:underline"
-                              onClick={() => {
-                                setEditingId(id);
-                                setEditFee(
-                                  c.monthlyFee == null
-                                    ? ""
-                                    : String(c.monthlyFee),
-                                );
-                              }}
-                            >
-                              {c.monthlyFee == null
-                                ? "Set fee"
-                                : num(c.monthlyFee)}
-                            </button>
-                          )}
-                        </TableCell>
-                        <TableCell>{str(year.name) || "—"}</TableCell>
-                        <TableCell>{num(count.enrollments)}</TableCell>
-                        <TableCell>{teacherNameFromClass(c)}</TableCell>
-                        <TableCell>
-                          <div className="flex min-w-[220px] items-center gap-2">
-                            <Select
-                              value={assignTeacherId[id] ?? ""}
-                              onValueChange={(v) =>
-                                setAssignTeacherId((p) => ({
-                                  ...p,
-                                  [id]: v,
-                                }))
-                              }
-                            >
-                              <SelectTrigger className="h-8 w-40">
-                                <SelectValue placeholder="Select teacher" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {teachers.map((t) => {
-                                  const user = obj(t.user);
-                                  return (
-                                    <SelectItem
-                                      key={str(t.id)}
-                                      value={str(t.id)}
-                                    >
-                                      {str(user.name)}
-                                    </SelectItem>
-                                  );
-                                })}
-                              </SelectContent>
-                            </Select>
+                      const year = obj(c.academicYear);
+                      const count = obj(c._count);
+                      const id = str(c.id);
+                      const isEditing = editingId === id;
+                      return (
+                        <TableRow key={id}>
+                          <TableCell className="font-medium">
                             <Button
                               type="button"
-                              size="sm"
-                              disabled={
-                                assigningClassId === id ||
-                                !assignTeacherId[id] ||
-                                teachers.length === 0
-                              }
-                              onClick={() => void onAssignTeacher(id)}
+                              variant="link"
+                              className="h-auto p-0 font-medium"
+                              asChild
                             >
-                              {assigningClassId === id
-                                ? "Saving..."
-                                : "Assign"}
+                              <Link href={`/dashboard/school/classes/${id}`}>
+                                {formatClassLabel(
+                                  str(c.classLevel),
+                                  str(c.section) || null,
+                                )}
+                              </Link>
                             </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
+                          </TableCell>
+                          <TableCell>{str(c.section) || "—"}</TableCell>
+                          <TableCell>
+                            {isEditing ? (
+                              <div className="flex items-center gap-2">
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  step="0.01"
+                                  className="h-8 w-28"
+                                  value={editFee}
+                                  onChange={(e) => setEditFee(e.target.value)}
+                                />
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  disabled={savingFee}
+                                  onClick={() => void saveMonthlyFee(id)}
+                                >
+                                  Save
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => setEditingId(null)}
+                                >
+                                  Cancel
+                                </Button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                className="text-left hover:underline"
+                                onClick={() => {
+                                  setEditingId(id);
+                                  setEditFee(
+                                    c.monthlyFee == null
+                                      ? ""
+                                      : String(c.monthlyFee),
+                                  );
+                                }}
+                              >
+                                {c.monthlyFee == null
+                                  ? "Set fee"
+                                  : num(c.monthlyFee)}
+                              </button>
+                            )}
+                          </TableCell>
+                          <TableCell>{str(year.name) || "—"}</TableCell>
+                          <TableCell>{num(count.enrollments)}</TableCell>
+                          <TableCell>{teacherNameFromClass(c)}</TableCell>
+                          <TableCell>
+                            <div className="flex min-w-[220px] items-center gap-2">
+                              <Select
+                                value={assignTeacherId[id] ?? ""}
+                                onValueChange={(v) =>
+                                  setAssignTeacherId((p) => ({
+                                    ...p,
+                                    [id]: v,
+                                  }))
+                                }
+                              >
+                                <SelectTrigger className="h-8 w-40">
+                                  <SelectValue placeholder="Select teacher" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {teachers.map((t) => {
+                                    const user = obj(t.user);
+                                    return (
+                                      <SelectItem
+                                        key={str(t.id)}
+                                        value={str(t.id)}
+                                      >
+                                        {str(user.name)}
+                                      </SelectItem>
+                                    );
+                                  })}
+                                </SelectContent>
+                              </Select>
+                              <Button
+                                type="button"
+                                size="sm"
+                                disabled={
+                                  assigningClassId === id ||
+                                  !assignTeacherId[id] ||
+                                  teachers.length === 0
+                                }
+                                onClick={() => void onAssignTeacher(id)}
+                              >
+                                {assigningClassId === id
+                                  ? "Saving..."
+                                  : "Assign"}
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
                   )}
                 </TableBody>
               </Table>

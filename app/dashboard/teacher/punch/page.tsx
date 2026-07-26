@@ -10,10 +10,10 @@ export default function TeacherPunchPage() {
         <div>
           <h1 className="text-2xl font-semibold">My punch</h1>
           <p className="text-sm text-muted-foreground">
-            Record your daily attendance.
+            Punch in by scanning the school QR code in the teacher app.
           </p>
         </div>
-        <PunchCard />
+        <PunchCard punchInViaQrOnly />
       </div>
     </DashboardShell>
   );

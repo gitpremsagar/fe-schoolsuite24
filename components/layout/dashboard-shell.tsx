@@ -37,6 +37,7 @@ function navForRole(role: UserRole): NavItem[] {
         { href: "/dashboard/school", label: "Overview" },
         { href: "/dashboard/school/academic-years", label: "Academic Years" },
         { href: "/dashboard/school/classes", label: "Classes" },
+        { href: "/dashboard/school/subjects", label: "Subjects" },
         { href: "/dashboard/school/students", label: "Students" },
         { href: "/dashboard/school/staff", label: "Staff" },
         { href: "/dashboard/school/attendance/students", label: "Attendance" },
