@@ -508,6 +508,7 @@ export default function ClassDetailPage() {
                     <Table>
                       <TableHeader>
                         <TableRow>
+                          <TableHead className="w-14">#</TableHead>
                           <TableHead>Subject</TableHead>
                           <TableHead>Teacher</TableHead>
                         </TableRow>
@@ -519,8 +520,11 @@ export default function ClassDetailPage() {
                               str(obj(b.subject).name),
                             ),
                           )
-                          .map((link) => (
+                          .map((link, index) => (
                             <TableRow key={str(link.id)}>
+                              <TableCell className="text-muted-foreground">
+                                {index + 1}
+                              </TableCell>
                               <TableCell className="font-medium">
                                 {str(obj(link.subject).name) || "—"}
                               </TableCell>
@@ -593,17 +597,21 @@ export default function ClassDetailPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead className="w-14">#</TableHead>
                         <TableHead>Name</TableHead>
                         <TableHead>Roll</TableHead>
                         <TableHead>Admission #</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {enrollments.map((e) => {
+                      {enrollments.map((e, index) => {
                         const profile = obj(e.studentProfile);
                         const user = obj(profile.user);
                         return (
                           <TableRow key={str(e.id)}>
+                            <TableCell className="text-muted-foreground">
+                              {index + 1}
+                            </TableCell>
                             <TableCell className="font-medium">
                               <Link
                                 href={`/dashboard/school/students/${str(profile.id)}`}

@@ -32,13 +32,6 @@ function currentYearMonth() {
   return { year: now.getFullYear(), month: now.getMonth() + 1 };
 }
 
-function monthLabel(year: number, month: number) {
-  return new Date(year, month - 1, 1).toLocaleString("en-IN", {
-    month: "long",
-    year: "numeric",
-  });
-}
-
 function dateKey(year: number, month: number, day: number) {
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
@@ -343,13 +336,6 @@ function StudentAttendancePageContent() {
         </Button>
       </div>
 
-      <p className="text-sm text-muted-foreground">
-        {monthLabel(year, month)}
-        {showAllClasses ? " · All students" : ""} · Click a cell to cycle
-        Present → Absent → blank, then save. Highlighted columns are holidays
-        (including Sundays) and cannot be marked.
-      </p>
-
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
       {message ? <p className="text-sm text-green-600">{message}</p> : null}
 
@@ -366,27 +352,19 @@ function StudentAttendancePageContent() {
           No students match the current search.
         </p>
       ) : (
-        <div className="overflow-auto rounded-xl border">
-          <table className="min-w-max w-full border-collapse text-xs">
-            <thead>
-              <tr className="bg-muted/50">
+        <div className="max-h-[calc(100dvh-14rem)] overflow-auto rounded-xl border">
+          <table className="min-w-max w-full border-separate border-spacing-0 text-xs">
+            <thead className="sticky top-0 z-20">
+              <tr className="bg-muted">
                 {showAllClasses ? (
-                  <th className="sticky left-0 z-10 bg-muted px-3 py-2 text-left font-medium">
+                  <th className="sticky left-0 top-0 z-30 border-b bg-muted px-3 py-2 text-left font-medium">
                     Class
                   </th>
                 ) : null}
                 <th
                   className={cn(
-                    "sticky z-10 bg-muted px-3 py-2 text-left font-medium",
+                    "sticky top-0 z-30 border-b bg-muted px-3 py-2 text-left font-medium",
                     showAllClasses ? "left-28" : "left-0",
-                  )}
-                >
-                  Roll
-                </th>
-                <th
-                  className={cn(
-                    "sticky z-10 bg-muted px-3 py-2 text-left font-medium",
-                    showAllClasses ? "left-40" : "left-14",
                   )}
                 >
                   Student
@@ -398,8 +376,10 @@ function StudentAttendancePageContent() {
                       key={day}
                       title={holiday ? "Holiday" : undefined}
                       className={cn(
-                        "min-w-8 px-1 py-2 text-center font-medium",
-                        holiday && "bg-amber-100 text-amber-900",
+                        "sticky top-0 z-20 min-w-8 border-b px-1 py-2 text-center font-medium",
+                        holiday
+                          ? "bg-amber-100 text-amber-900"
+                          : "bg-muted",
                       )}
                     >
                       {day}
@@ -412,24 +392,16 @@ function StudentAttendancePageContent() {
               {filteredStudents.map((s) => {
                 const id = str(s.studentProfileId);
                 return (
-                  <tr key={id} className="border-t">
+                  <tr key={id} className="group border-t hover:bg-muted">
                     {showAllClasses ? (
-                      <td className="sticky left-0 z-10 bg-background px-3 py-1 whitespace-nowrap">
+                      <td className="sticky left-0 z-10 bg-card px-3 py-1 whitespace-nowrap group-hover:bg-muted">
                         {classLabel(s)}
                       </td>
                     ) : null}
                     <td
                       className={cn(
-                        "sticky z-10 bg-background px-3 py-1",
+                        "sticky z-10 bg-card px-3 py-1 font-medium whitespace-nowrap group-hover:bg-muted",
                         showAllClasses ? "left-28" : "left-0",
-                      )}
-                    >
-                      {str(s.rollNumber) || "—"}
-                    </td>
-                    <td
-                      className={cn(
-                        "sticky z-10 bg-background px-3 py-1 font-medium whitespace-nowrap",
-                        showAllClasses ? "left-40" : "left-14",
                       )}
                     >
                       {str(s.name)}
@@ -442,7 +414,7 @@ function StudentAttendancePageContent() {
                           key={day}
                           className={cn(
                             "p-0.5 text-center",
-                            holiday && "bg-amber-50",
+                            holiday && "bg-amber-50 group-hover:bg-amber-100",
                           )}
                         >
                           <button

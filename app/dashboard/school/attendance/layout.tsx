@@ -29,14 +29,7 @@ export default function AttendanceLayout({
 
   return (
     <DashboardShell allowedRoles={["ADMIN"]}>
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-semibold">Attendance</h1>
-          <p className="text-sm text-muted-foreground">
-            Monthly attendance registers for students and staff.
-          </p>
-        </div>
-
+      <div className="space-y-4">
         <div className="inline-flex rounded-full bg-muted p-1">
           {tabs.map((tab) => {
             const active =
