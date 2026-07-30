@@ -236,6 +236,63 @@ export const schoolApi = {
   },
 };
 
+export const examsApi = {
+  list: (academicYearId?: string) => {
+    const qs = academicYearId ? `?academicYearId=${academicYearId}` : "";
+    return apiFetch<{ examinations: Array<Record<string, unknown>> }>(
+      `/exams${qs}`,
+    );
+  },
+  create: (body: Record<string, unknown>) =>
+    apiFetch<{ examination: Record<string, unknown> }>("/exams", {
+      method: "POST",
+      body,
+    }),
+  get: (id: string) =>
+    apiFetch<{ examination: Record<string, unknown> }>(`/exams/${id}`),
+  update: (id: string, body: Record<string, unknown>) =>
+    apiFetch<{ examination: Record<string, unknown> }>(`/exams/${id}`, {
+      method: "PATCH",
+      body,
+    }),
+  remove: (id: string) =>
+    apiFetch<{ ok: boolean }>(`/exams/${id}`, { method: "DELETE" }),
+  markSheets: (id: string, classId?: string, subjectId?: string) => {
+    const params = new URLSearchParams();
+    if (classId) params.set("classId", classId);
+    if (subjectId) params.set("subjectId", subjectId);
+    const qs = params.toString();
+    return apiFetch<{ markSheets: Array<Record<string, unknown>> }>(
+      `/exams/${id}/marksheets${qs ? `?${qs}` : ""}`,
+    );
+  },
+  saveMarks: (
+    id: string,
+    body: { records: Array<{ id: string; marksObtained: number | null }> },
+  ) =>
+    apiFetch<{ ok: boolean; updated: number }>(`/exams/${id}/marksheets`, {
+      method: "PUT",
+      body,
+    }),
+  publish: (
+    id: string,
+    body: {
+      publish?: boolean;
+      ids?: string[];
+      classId?: string;
+      subjectId?: string;
+    },
+  ) =>
+    apiFetch<{ ok: boolean; updated: number; published: boolean }>(
+      `/exams/${id}/marksheets/publish`,
+      { method: "POST", body },
+    ),
+  myMarkSheets: () =>
+    apiFetch<{ exams: Array<Record<string, unknown>> }>(
+      "/exams/me/marksheets",
+    ),
+};
+
 export const attendanceApi = {
   classAttendance: (classId: string, date: string) =>
     apiFetch<Record<string, unknown>>(

@@ -38,6 +38,7 @@ function navForRole(role: UserRole): NavItem[] {
         { href: "/dashboard/school/academic-years", label: "Academic Years" },
         { href: "/dashboard/school/classes", label: "Classes" },
         { href: "/dashboard/school/subjects", label: "Subjects" },
+        { href: "/dashboard/school/exams", label: "Exams" },
         { href: "/dashboard/school/students", label: "Students" },
         { href: "/dashboard/school/staff", label: "Staff" },
         { href: "/dashboard/school/attendance/students", label: "Attendance" },
@@ -49,6 +50,7 @@ function navForRole(role: UserRole): NavItem[] {
     case "TEACHER":
       return [
         { href: "/dashboard/teacher", label: "Overview" },
+        { href: "/dashboard/teacher/exams", label: "Exams" },
         { href: "/dashboard/teacher/attendance", label: "Student Attendance" },
         { href: "/dashboard/teacher/punch", label: "My Punch" },
       ];
@@ -60,6 +62,7 @@ function navForRole(role: UserRole): NavItem[] {
     case "STUDENT":
       return [
         { href: "/dashboard/student", label: "Overview" },
+        { href: "/dashboard/student/exams", label: "My Exams" },
         { href: "/dashboard/student/attendance", label: "My Attendance" },
       ];
     default:
