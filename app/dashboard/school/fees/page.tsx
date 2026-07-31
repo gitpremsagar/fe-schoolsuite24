@@ -1535,8 +1535,8 @@ function FeesPageContent() {
                     </Select>
                     {editStatus === "PAID" ? (
                       <p className="text-muted-foreground text-xs">
-                        Marking paid also marks all earlier months in this year
-                        as paid.
+                        Marking paid also marks earlier unpaid or partially paid
+                        months in this year as paid.
                       </p>
                     ) : null}
                     {editStatus === "UNPAID" ? (
