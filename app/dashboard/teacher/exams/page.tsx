@@ -189,6 +189,21 @@ export default function TeacherExamsPage() {
     });
   }
 
+  function toggleSelectAllPapers() {
+    setForm((f) => {
+      const next: Record<PaperKey, string> = {};
+      for (const a of myAssignments) {
+        const key = paperKey(a.classId, a.subjectId);
+        next[key] = f.papers[key] ?? "100";
+      }
+      return { ...f, papers: next };
+    });
+  }
+
+  function clearAllPapers() {
+    setForm((f) => ({ ...f, papers: {} }));
+  }
+
   async function onCreate(e: React.FormEvent) {
     e.preventDefault();
     const name = form.name.trim();
@@ -274,6 +289,21 @@ export default function TeacherExamsPage() {
       else next[key] = "100";
       return { ...f, papers: next };
     });
+  }
+
+  function toggleSelectAllEditPapers() {
+    setEditForm((f) => {
+      const next: Record<PaperKey, string> = {};
+      for (const a of myAssignments) {
+        const key = paperKey(a.classId, a.subjectId);
+        next[key] = f.papers[key] ?? "100";
+      }
+      return { ...f, papers: next };
+    });
+  }
+
+  function clearAllEditPapers() {
+    setEditForm((f) => ({ ...f, papers: {} }));
   }
 
   async function onSaveEdit(e: React.FormEvent) {
@@ -434,7 +464,32 @@ export default function TeacherExamsPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Your subjects</Label>
+                  <div className="flex items-center justify-between gap-2">
+                    <Label>Your subjects</Label>
+                    {myAssignments.length > 0 ? (
+                      <div className="flex items-center gap-1">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-auto px-2 py-1 text-xs"
+                          onClick={toggleSelectAllPapers}
+                        >
+                          Select all
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-auto px-2 py-1 text-xs"
+                          onClick={clearAllPapers}
+                          disabled={Object.keys(form.papers).length === 0}
+                        >
+                          Clear
+                        </Button>
+                      </div>
+                    ) : null}
+                  </div>
                   {myAssignments.length === 0 ? (
                     <p className="text-muted-foreground text-sm">
                       No subjects are assigned to you yet.
@@ -628,7 +683,32 @@ export default function TeacherExamsPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Your subjects</Label>
+                  <div className="flex items-center justify-between gap-2">
+                    <Label>Your subjects</Label>
+                    {myAssignments.length > 0 ? (
+                      <div className="flex items-center gap-1">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-auto px-2 py-1 text-xs"
+                          onClick={toggleSelectAllEditPapers}
+                        >
+                          Select all
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-auto px-2 py-1 text-xs"
+                          onClick={clearAllEditPapers}
+                          disabled={Object.keys(editForm.papers).length === 0}
+                        >
+                          Clear
+                        </Button>
+                      </div>
+                    ) : null}
+                  </div>
                   {myAssignments.map((a) => {
                     const key = paperKey(a.classId, a.subjectId);
                     const selected = key in editForm.papers;

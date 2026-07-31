@@ -406,6 +406,7 @@ export default function TeacherExamDetailPage() {
   const canManage = !!(exam && userId && str(exam.createdById) === userId);
 
   const myAssignments = useMemo(() => {
+    const examYearId = exam ? str(exam.academicYearId) : "";
     const items: Array<{
       classId: string;
       subjectId: string;
@@ -413,6 +414,9 @@ export default function TeacherExamDetailPage() {
       subjectName: string;
     }> = [];
     for (const klass of myClasses) {
+      const year = obj(klass.academicYear);
+      const yearId = str(klass.academicYearId || year.id);
+      if (examYearId && yearId && yearId !== examYearId) continue;
       const cId = str(klass.id);
       const classLabel = formatClassLabel(
         str(klass.classLevel),
@@ -434,7 +438,7 @@ export default function TeacherExamDetailPage() {
       }
     }
     return items;
-  }, [myClasses, userId]);
+  }, [myClasses, userId, exam]);
 
   function openEdit() {
     if (!exam) return;
@@ -462,6 +466,21 @@ export default function TeacherExamDetailPage() {
       else next[key] = "100";
       return { ...f, papers: next };
     });
+  }
+
+  function toggleSelectAllEditPapers() {
+    setEditForm((f) => {
+      const next: Record<PaperKey, string> = {};
+      for (const a of myAssignments) {
+        const key = paperKey(a.classId, a.subjectId);
+        next[key] = f.papers[key] ?? "100";
+      }
+      return { ...f, papers: next };
+    });
+  }
+
+  function clearAllEditPapers() {
+    setEditForm((f) => ({ ...f, papers: {} }));
   }
 
   async function onSaveEdit(e: React.FormEvent) {
@@ -746,7 +765,32 @@ export default function TeacherExamDetailPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Your subjects</Label>
+                  <div className="flex items-center justify-between gap-2">
+                    <Label>Your subjects</Label>
+                    {myAssignments.length > 0 ? (
+                      <div className="flex items-center gap-1">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-auto px-2 py-1 text-xs"
+                          onClick={toggleSelectAllEditPapers}
+                        >
+                          Select all
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-auto px-2 py-1 text-xs"
+                          onClick={clearAllEditPapers}
+                          disabled={Object.keys(editForm.papers).length === 0}
+                        >
+                          Clear
+                        </Button>
+                      </div>
+                    ) : null}
+                  </div>
                   {myAssignments.map((a) => {
                     const key = paperKey(a.classId, a.subjectId);
                     const selected = key in editForm.papers;

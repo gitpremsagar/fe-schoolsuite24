@@ -505,6 +505,59 @@ export default function SchoolExamDetailPage() {
     });
   }
 
+  function collectClassSubjectKeys(
+    classIds: string[],
+    yearClasses: Row[],
+  ): Array<{ classId: string; subjectId: string }> {
+    const items: Array<{ classId: string; subjectId: string }> = [];
+    for (const classId of classIds) {
+      const klass = yearClasses.find((c) => str(c.id) === classId);
+      if (!klass) continue;
+      for (const cs of arr(klass.classSubjects)) {
+        const subject = obj(cs.subject);
+        const subjectId = str(subject.id || cs.subjectId);
+        if (subjectId) items.push({ classId, subjectId });
+      }
+    }
+    return items;
+  }
+
+  function yearClassIds(yearClasses: Row[]) {
+    return yearClasses.map((c) => str(c.id)).filter(Boolean);
+  }
+
+  function buildPapersForItems(
+    items: Array<{ classId: string; subjectId: string }>,
+    existing: Record<PaperKey, string>,
+  ) {
+    const next: Record<PaperKey, string> = {};
+    for (const a of items) {
+      const key = paperKey(a.classId, a.subjectId);
+      next[key] = existing[key] ?? "100";
+    }
+    return next;
+  }
+
+  function toggleSelectAllEditPapers() {
+    setEditForm((f) => {
+      const allClassIds = yearClassIds(editYearClasses);
+      const items = collectClassSubjectKeys(allClassIds, editYearClasses);
+      return {
+        ...f,
+        papers: buildPapersForItems(items, f.papers),
+        ...(f.scope === "CLASSES" ? { classIds: allClassIds } : {}),
+      };
+    });
+  }
+
+  function clearAllEditPapers() {
+    setEditForm((f) => ({
+      ...f,
+      papers: {},
+      ...(f.scope === "CLASSES" ? { classIds: [] as string[] } : {}),
+    }));
+  }
+
   async function onSaveEdit(e: React.FormEvent) {
     e.preventDefault();
     if (!examId) return;
@@ -840,7 +893,32 @@ export default function SchoolExamDetailPage() {
                   </div>
                 ) : null}
                 <div className="space-y-3">
-                  <Label>Subjects / papers</Label>
+                  <div className="flex items-center justify-between gap-2">
+                    <Label>Subjects / papers</Label>
+                    {editYearClasses.length > 0 ? (
+                      <div className="flex items-center gap-1">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-auto px-2 py-1 text-xs"
+                          onClick={toggleSelectAllEditPapers}
+                        >
+                          Select all
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-auto px-2 py-1 text-xs"
+                          onClick={clearAllEditPapers}
+                          disabled={Object.keys(editForm.papers).length === 0}
+                        >
+                          Clear
+                        </Button>
+                      </div>
+                    ) : null}
+                  </div>
                   {editSelectedClassIds.length === 0 ? (
                     <p className="text-muted-foreground text-sm">
                       Select classes to choose subjects.

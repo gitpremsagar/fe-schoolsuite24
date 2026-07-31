@@ -245,6 +245,60 @@ export default function SchoolExamsPage() {
     });
   }
 
+  function collectClassSubjectKeys(
+    classIds: string[],
+    yearClasses: Row[],
+  ): Array<{ classId: string; subjectId: string }> {
+    const items: Array<{ classId: string; subjectId: string }> = [];
+    for (const classId of classIds) {
+      const klass = yearClasses.find((c) => str(c.id) === classId);
+      if (!klass) continue;
+      for (const cs of arr(klass.classSubjects)) {
+        const subject = obj(cs.subject);
+        const subjectId = str(subject.id || cs.subjectId);
+        if (subjectId) items.push({ classId, subjectId });
+      }
+    }
+    return items;
+  }
+
+  /** All class IDs in the form's academic year (not only already-checked classes). */
+  function yearClassIds(yearClasses: Row[]) {
+    return yearClasses.map((c) => str(c.id)).filter(Boolean);
+  }
+
+  function buildPapersForItems(
+    items: Array<{ classId: string; subjectId: string }>,
+    existing: Record<PaperKey, string>,
+  ) {
+    const next: Record<PaperKey, string> = {};
+    for (const a of items) {
+      const key = paperKey(a.classId, a.subjectId);
+      next[key] = existing[key] ?? "100";
+    }
+    return next;
+  }
+
+  function toggleSelectAllPapers() {
+    setForm((f) => {
+      const allClassIds = yearClassIds(formYearClasses);
+      const items = collectClassSubjectKeys(allClassIds, formYearClasses);
+      return {
+        ...f,
+        papers: buildPapersForItems(items, f.papers),
+        ...(f.scope === "CLASSES" ? { classIds: allClassIds } : {}),
+      };
+    });
+  }
+
+  function clearAllPapers() {
+    setForm((f) => ({
+      ...f,
+      papers: {},
+      ...(f.scope === "CLASSES" ? { classIds: [] as string[] } : {}),
+    }));
+  }
+
   function toggleEditClass(classId: string) {
     setEditForm((f) => {
       const next = f.classIds.includes(classId)
@@ -268,6 +322,26 @@ export default function SchoolExamsPage() {
       else next[key] = "100";
       return { ...f, papers: next };
     });
+  }
+
+  function toggleSelectAllEditPapers() {
+    setEditForm((f) => {
+      const allClassIds = yearClassIds(editYearClasses);
+      const items = collectClassSubjectKeys(allClassIds, editYearClasses);
+      return {
+        ...f,
+        papers: buildPapersForItems(items, f.papers),
+        ...(f.scope === "CLASSES" ? { classIds: allClassIds } : {}),
+      };
+    });
+  }
+
+  function clearAllEditPapers() {
+    setEditForm((f) => ({
+      ...f,
+      papers: {},
+      ...(f.scope === "CLASSES" ? { classIds: [] as string[] } : {}),
+    }));
   }
 
   async function onCreate(e: React.FormEvent) {
@@ -586,7 +660,32 @@ export default function SchoolExamsPage() {
                 ) : null}
 
                 <div className="space-y-3">
-                  <Label>Subjects / papers</Label>
+                  <div className="flex items-center justify-between gap-2">
+                    <Label>Subjects / papers</Label>
+                    {formYearClasses.length > 0 ? (
+                      <div className="flex items-center gap-1">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-auto px-2 py-1 text-xs"
+                          onClick={toggleSelectAllPapers}
+                        >
+                          Select all
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-auto px-2 py-1 text-xs"
+                          onClick={clearAllPapers}
+                          disabled={Object.keys(form.papers).length === 0}
+                        >
+                          Clear
+                        </Button>
+                      </div>
+                    ) : null}
+                  </div>
                   {selectedClassIds.length === 0 ? (
                     <p className="text-muted-foreground text-sm">
                       Select classes to choose subjects.
@@ -872,7 +971,32 @@ export default function SchoolExamsPage() {
                   </div>
                 ) : null}
                 <div className="space-y-3">
-                  <Label>Subjects / papers</Label>
+                  <div className="flex items-center justify-between gap-2">
+                    <Label>Subjects / papers</Label>
+                    {editYearClasses.length > 0 ? (
+                      <div className="flex items-center gap-1">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-auto px-2 py-1 text-xs"
+                          onClick={toggleSelectAllEditPapers}
+                        >
+                          Select all
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-auto px-2 py-1 text-xs"
+                          onClick={clearAllEditPapers}
+                          disabled={Object.keys(editForm.papers).length === 0}
+                        >
+                          Clear
+                        </Button>
+                      </div>
+                    ) : null}
+                  </div>
                   {editSelectedClassIds.length === 0 ? (
                     <p className="text-muted-foreground text-sm">
                       Select classes to choose subjects.
