@@ -89,6 +89,7 @@ export default function ClassDetailPage() {
   const [klass, setKlass] = useState<Row | null>(null);
   const [subjects, setSubjects] = useState<Row[]>([]);
   const [teachers, setTeachers] = useState<Row[]>([]);
+  const [otherClasses, setOtherClasses] = useState<Row[]>([]);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
@@ -98,6 +99,7 @@ export default function ClassDetailPage() {
   const [savingSubjects, setSavingSubjects] = useState(false);
   const [newSubjectName, setNewSubjectName] = useState("");
   const [addingSubject, setAddingSubject] = useState(false);
+  const [copySelectKey, setCopySelectKey] = useState(0);
   const [assignTeacherId, setAssignTeacherId] = useState("");
   const [assigning, setAssigning] = useState(false);
 
@@ -125,6 +127,12 @@ export default function ClassDetailPage() {
       setKlass(classRes.class);
       setSubjects(subjectsRes.subjects);
       setTeachers(staffRes.staff);
+
+      const yearId = str(classRes.class.academicYearId);
+      const classesRes = await schoolApi.classes.list(yearId || undefined);
+      setOtherClasses(
+        classesRes.classes.filter((c) => str(c.id) !== classId),
+      );
     } catch (err) {
       handleErr(err, "Failed to load class");
     } finally {
@@ -153,6 +161,25 @@ export default function ClassDetailPage() {
       ...prev,
       [subjectId]: staffProfileId === NO_TEACHER ? null : staffProfileId,
     }));
+  }
+
+  function copySubjectsFromClass(sourceClassId: string) {
+    const source = otherClasses.find((c) => str(c.id) === sourceClassId);
+    if (!source) return;
+    const assignments = subjectAssignmentsFromClass(source);
+    setEditSubjectTeachers(assignments);
+    setCopySelectKey((k) => k + 1);
+    setError("");
+    const label = formatClassLabel(
+      str(source.classLevel),
+      str(source.section) || null,
+    );
+    const count = Object.keys(assignments).length;
+    setMessage(
+      count === 0
+        ? `Copied from ${label}: no subjects assigned — review and save`
+        : `Copied subjects from ${label} — review and save`,
+    );
   }
 
   async function onAddSubjectInline() {
@@ -360,6 +387,31 @@ export default function ClassDetailPage() {
               <CardContent>
                 {editingSubjects ? (
                   <div className="space-y-3">
+                    {otherClasses.length > 0 ? (
+                      <div className="space-y-1">
+                        <Label className="text-muted-foreground">
+                          Copy from class
+                        </Label>
+                        <Select
+                          key={copySelectKey}
+                          onValueChange={copySubjectsFromClass}
+                        >
+                          <SelectTrigger className="w-full sm:w-64">
+                            <SelectValue placeholder="Select a class…" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {otherClasses.map((c) => (
+                              <SelectItem key={str(c.id)} value={str(c.id)}>
+                                {formatClassLabel(
+                                  str(c.classLevel),
+                                  str(c.section) || null,
+                                )}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    ) : null}
                     <div className="max-h-64 space-y-1 overflow-y-auto rounded-lg border p-2">
                       {subjects.length === 0 ? (
                         <p className="px-1 py-2 text-sm text-muted-foreground">
@@ -464,6 +516,7 @@ export default function ClassDetailPage() {
                         onClick={() => {
                           setEditingSubjects(false);
                           setNewSubjectName("");
+                          setCopySelectKey((k) => k + 1);
                         }}
                       >
                         Cancel
