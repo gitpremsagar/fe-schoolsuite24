@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type MarkSheetSubjectCol = {
@@ -29,6 +30,16 @@ export type MarkSheetRowStat = {
   rank: number;
 };
 
+type SortKey =
+  | "roll"
+  | "student"
+  | "total"
+  | "percentage"
+  | "rank"
+  | `subject:${string}`;
+
+type SortDir = "asc" | "desc";
+
 type Props = {
   studentRows: MarkSheetStudentRow[];
   subjectCols: MarkSheetSubjectCol[];
@@ -40,6 +51,31 @@ type Props = {
 
 function cellInputId(rowIndex: number, colIndex: number) {
   return `ms-cell-${rowIndex}-${colIndex}`;
+}
+
+function compareRoll(a: string, b: string) {
+  if (a && b) return a.localeCompare(b, undefined, { numeric: true });
+  if (a) return -1;
+  if (b) return 1;
+  return 0;
+}
+
+function parseMark(raw: string | undefined): number | null {
+  if (raw === undefined || raw.trim() === "") return null;
+  const value = Number(raw);
+  return Number.isNaN(value) ? null : value;
+}
+
+/** Empty/null values always sort after defined values. */
+function compareNullableNumber(
+  a: number | null,
+  b: number | null,
+  dir: number,
+) {
+  if (a == null && b == null) return 0;
+  if (a == null) return 1;
+  if (b == null) return -1;
+  return (a - b) * dir;
 }
 
 export function MarkSheetGrid({
@@ -55,6 +91,8 @@ export function MarkSheetGrid({
   const [focusRow, setFocusRow] = useState<number | null>(null);
   const [focusCol, setFocusCol] = useState<number | null>(null);
   const [overLimit, setOverLimit] = useState<Record<string, boolean>>({});
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
   const clearTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>(
     {},
   );
@@ -68,6 +106,83 @@ export function MarkSheetGrid({
       for (const t of Object.values(timers)) clearTimeout(t);
     };
   }, []);
+
+  const sortedEntries = useMemo(() => {
+    const entries = studentRows.map((row, i) => ({
+      row,
+      stats: rowStats[i] ?? { total: 0, percentage: 0, rank: 0 },
+    }));
+    if (!sortKey) return entries;
+
+    const dir = sortDir === "asc" ? 1 : -1;
+    const subjectId =
+      sortKey.startsWith("subject:") ? sortKey.slice("subject:".length) : null;
+
+    return [...entries].sort((a, b) => {
+      let cmp = 0;
+
+      if (sortKey === "roll") {
+        cmp = compareRoll(a.row.rollNumber, b.row.rollNumber) * dir;
+      } else if (sortKey === "student") {
+        cmp = a.row.name.localeCompare(b.row.name) * dir;
+      } else if (subjectId) {
+        const sheetA = a.row.bySubject[subjectId];
+        const sheetB = b.row.bySubject[subjectId];
+        const markA = sheetA ? parseMark(marks[sheetA.id]) : null;
+        const markB = sheetB ? parseMark(marks[sheetB.id]) : null;
+        cmp = compareNullableNumber(markA, markB, dir);
+      } else if (sortKey === "total") {
+        const aAny = subjectCols.some((c) => {
+          const s = a.row.bySubject[c.subjectId];
+          return s && (marks[s.id] ?? "").trim() !== "";
+        });
+        const bAny = subjectCols.some((c) => {
+          const s = b.row.bySubject[c.subjectId];
+          return s && (marks[s.id] ?? "").trim() !== "";
+        });
+        cmp = compareNullableNumber(
+          aAny ? a.stats.total : null,
+          bAny ? b.stats.total : null,
+          dir,
+        );
+      } else if (sortKey === "percentage") {
+        const aAny = subjectCols.some((c) => {
+          const s = a.row.bySubject[c.subjectId];
+          return s && (marks[s.id] ?? "").trim() !== "";
+        });
+        const bAny = subjectCols.some((c) => {
+          const s = b.row.bySubject[c.subjectId];
+          return s && (marks[s.id] ?? "").trim() !== "";
+        });
+        cmp = compareNullableNumber(
+          aAny ? a.stats.percentage : null,
+          bAny ? b.stats.percentage : null,
+          dir,
+        );
+      } else if (sortKey === "rank") {
+        cmp = compareNullableNumber(
+          a.stats.rank > 0 ? a.stats.rank : null,
+          b.stats.rank > 0 ? b.stats.rank : null,
+          dir,
+        );
+      }
+
+      if (cmp !== 0) return cmp;
+      return (
+        compareRoll(a.row.rollNumber, b.row.rollNumber) ||
+        a.row.name.localeCompare(b.row.name)
+      );
+    });
+  }, [studentRows, rowStats, sortKey, sortDir, marks, subjectCols]);
+
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortKey(key);
+    setSortDir("asc");
+  }
 
   const flashOverLimit = useCallback((sheetId: string) => {
     setOverLimit((prev) => ({ ...prev, [sheetId]: true }));
@@ -89,12 +204,12 @@ export function MarkSheetGrid({
       if (
         rowIndex < 0 ||
         colIndex < 0 ||
-        rowIndex >= studentRows.length ||
+        rowIndex >= sortedEntries.length ||
         colIndex >= subjectCols.length
       ) {
         return;
       }
-      const row = studentRows[rowIndex];
+      const row = sortedEntries[rowIndex].row;
       const col = subjectCols[colIndex];
       if (!row.bySubject[col.subjectId]) {
         return;
@@ -111,7 +226,7 @@ export function MarkSheetGrid({
         el.select();
       }
     },
-    [studentRows, subjectCols],
+    [sortedEntries, subjectCols],
   );
 
   const findNextEditable = useCallback(
@@ -125,18 +240,19 @@ export function MarkSheetGrid({
       let c = colIndex + dCol;
       while (
         r >= 0 &&
-        r < studentRows.length &&
+        r < sortedEntries.length &&
         c >= 0 &&
         c < subjectCols.length
       ) {
-        const sheet = studentRows[r].bySubject[subjectCols[c].subjectId];
+        const sheet =
+          sortedEntries[r].row.bySubject[subjectCols[c].subjectId];
         if (sheet) return { row: r, col: c };
         r += dRow;
         c += dCol;
       }
       return null;
     },
-    [studentRows, subjectCols],
+    [sortedEntries, subjectCols],
   );
 
   function handleCellKeyDown(
@@ -203,9 +319,62 @@ export function MarkSheetGrid({
     return rowHit || colHit;
   }
 
+  function SortableHead({
+    label,
+    column,
+    className,
+    children,
+    onMouseEnter,
+    onMouseLeave,
+  }: {
+    label: string;
+    column: SortKey;
+    className?: string;
+    children?: React.ReactNode;
+    onMouseEnter?: () => void;
+    onMouseLeave?: () => void;
+  }) {
+    const active = sortKey === column;
+    const Icon = !active
+      ? ArrowUpDown
+      : sortDir === "asc"
+        ? ArrowUp
+        : ArrowDown;
+
+    return (
+      <th
+        className={className}
+        aria-sort={
+          active
+            ? sortDir === "asc"
+              ? "ascending"
+              : "descending"
+            : "none"
+        }
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={onMouseLeave}
+      >
+        <button
+          type="button"
+          onClick={() => toggleSort(column)}
+          className={cn(
+            "inline-flex w-full items-center justify-center gap-0.5 font-semibold hover:text-foreground",
+            active ? "text-foreground" : "text-muted-foreground",
+            column === "roll" || column === "student"
+              ? "justify-start"
+              : "justify-center",
+          )}
+        >
+          <span className="min-w-0">{children ?? label}</span>
+          <Icon className="h-3 w-3 shrink-0 opacity-70" />
+        </button>
+      </th>
+    );
+  }
+
   return (
     <div
-      className="overflow-x-auto rounded-md border border-neutral-300 dark:border-neutral-700"
+      className="max-h-[min(70vh,calc(100vh-14rem))] overflow-auto rounded-md border border-neutral-300 dark:border-neutral-700"
       onMouseLeave={() => {
         setHoverRow(null);
         setHoverCol(null);
@@ -214,19 +383,25 @@ export function MarkSheetGrid({
       <table className="w-max min-w-full border-collapse text-sm">
         <thead>
           <tr className="bg-neutral-100 dark:bg-neutral-900">
-            <th className="sticky left-0 z-20 border border-neutral-300 bg-neutral-100 px-2 py-1.5 text-left font-semibold whitespace-nowrap dark:border-neutral-700 dark:bg-neutral-900">
-              Roll
-            </th>
-            <th className="sticky left-[52px] z-20 border border-neutral-300 bg-neutral-100 px-2 py-1.5 text-left font-semibold whitespace-nowrap dark:border-neutral-700 dark:bg-neutral-900">
-              Student
-            </th>
+            <SortableHead
+              label="Roll"
+              column="roll"
+              className="sticky top-0 left-0 z-30 border border-neutral-300 bg-neutral-100 px-2 py-1.5 text-left whitespace-nowrap dark:border-neutral-700 dark:bg-neutral-900"
+            />
+            <SortableHead
+              label="Student"
+              column="student"
+              className="sticky top-0 left-[52px] z-30 border border-neutral-300 bg-neutral-100 px-2 py-1.5 text-left whitespace-nowrap dark:border-neutral-700 dark:bg-neutral-900"
+            />
             {subjectCols.map((col, colIndex) => (
-              <th
+              <SortableHead
                 key={col.subjectId}
+                label={col.name}
+                column={`subject:${col.subjectId}`}
                 onMouseEnter={() => setHoverCol(colIndex)}
                 onMouseLeave={() => setHoverCol(null)}
                 className={cn(
-                  "border border-neutral-300 px-1 py-1.5 text-center font-semibold transition-colors dark:border-neutral-700",
+                  "sticky top-0 z-20 border border-neutral-300 bg-neutral-100 px-1 py-1.5 text-center transition-colors dark:border-neutral-700 dark:bg-neutral-900",
                   activeCol === colIndex &&
                     "bg-sky-100 dark:bg-sky-950/60",
                 )}
@@ -237,25 +412,34 @@ export function MarkSheetGrid({
                     / {col.maxMarks}
                   </div>
                 </div>
-              </th>
+              </SortableHead>
             ))}
-            <th className="border border-neutral-300 bg-neutral-50 px-2 py-1.5 text-center font-semibold whitespace-nowrap dark:border-neutral-700 dark:bg-neutral-950">
-              Total
-              <div className="text-muted-foreground text-[10px] font-normal">
-                / {maxTotal}
+            <SortableHead
+              label="Total"
+              column="total"
+              className="sticky top-0 z-20 border border-neutral-300 bg-neutral-50 px-2 py-1.5 text-center whitespace-nowrap dark:border-neutral-700 dark:bg-neutral-950"
+            >
+              <div className="leading-tight">
+                Total
+                <div className="text-muted-foreground text-[10px] font-normal">
+                  / {maxTotal}
+                </div>
               </div>
-            </th>
-            <th className="border border-neutral-300 bg-neutral-50 px-2 py-1.5 text-center font-semibold whitespace-nowrap dark:border-neutral-700 dark:bg-neutral-950">
-              %
-            </th>
-            <th className="border border-neutral-300 bg-neutral-50 px-2 py-1.5 text-center font-semibold whitespace-nowrap dark:border-neutral-700 dark:bg-neutral-950">
-              Rank
-            </th>
+            </SortableHead>
+            <SortableHead
+              label="%"
+              column="percentage"
+              className="sticky top-0 z-20 border border-neutral-300 bg-neutral-50 px-2 py-1.5 text-center whitespace-nowrap dark:border-neutral-700 dark:bg-neutral-950"
+            />
+            <SortableHead
+              label="Rank"
+              column="rank"
+              className="sticky top-0 z-20 border border-neutral-300 bg-neutral-50 px-2 py-1.5 text-center whitespace-nowrap dark:border-neutral-700 dark:bg-neutral-950"
+            />
           </tr>
         </thead>
         <tbody>
-          {studentRows.map((row, rowIndex) => {
-            const stats = rowStats[rowIndex];
+          {sortedEntries.map(({ row, stats }, rowIndex) => {
             const anyMarks = rowHasAnyMarks(row);
             const rowActive = activeRow === rowIndex;
             return (
@@ -272,8 +456,10 @@ export function MarkSheetGrid({
                   className={cn(
                     "sticky left-0 z-10 border border-neutral-300 px-2 py-0.5 text-center tabular-nums whitespace-nowrap dark:border-neutral-700",
                     rowActive
-                      ? "bg-sky-50 dark:bg-sky-950/40"
-                      : "bg-inherit",
+                      ? "bg-sky-50 dark:bg-sky-950"
+                      : rowIndex % 2 === 0
+                        ? "bg-white dark:bg-background"
+                        : "bg-neutral-50 dark:bg-neutral-950",
                   )}
                 >
                   {row.rollNumber || "—"}
@@ -282,8 +468,10 @@ export function MarkSheetGrid({
                   className={cn(
                     "sticky left-[52px] z-10 max-w-[160px] truncate border border-neutral-300 px-2 py-0.5 font-medium whitespace-nowrap dark:border-neutral-700",
                     rowActive
-                      ? "bg-sky-50 dark:bg-sky-950/40"
-                      : "bg-inherit",
+                      ? "bg-sky-50 dark:bg-sky-950"
+                      : rowIndex % 2 === 0
+                        ? "bg-white dark:bg-background"
+                        : "bg-neutral-50 dark:bg-neutral-950",
                   )}
                 >
                   {row.name}
