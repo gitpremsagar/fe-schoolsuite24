@@ -140,6 +140,52 @@ function num(v: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+function formatIndianAmount(value: number): string {
+  return value.toLocaleString("en-IN");
+}
+
+function monthOrdinal(year: number, month: number): number {
+  return year * 12 + month;
+}
+
+function leavingMonthOrdinal(leavingDate: string): number | null {
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})/.exec(leavingDate);
+  if (dateOnly) {
+    return monthOrdinal(Number(dateOnly[1]), Number(dateOnly[2]));
+  }
+  const d = new Date(leavingDate);
+  if (Number.isNaN(d.getTime())) return null;
+  return monthOrdinal(d.getUTCFullYear(), d.getUTCMonth() + 1);
+}
+
+/** Left students: due only for months strictly before their leaving month. */
+function isDueMonthForStudent(student: Row, mo: MonthCol): boolean {
+  if (student.isCurrentlyStudying !== false) return true;
+  const leavingDate = str(student.leavingDate);
+  if (!leavingDate) return false;
+  const leaveOrdinal = leavingMonthOrdinal(leavingDate);
+  if (leaveOrdinal == null) return false;
+  return monthOrdinal(mo.year, mo.month) < leaveOrdinal;
+}
+
+function isMonthUpToCurrent(mo: MonthCol): boolean {
+  const now = new Date();
+  return monthOrdinal(mo.year, mo.month) <= monthOrdinal(
+    now.getFullYear(),
+    now.getMonth() + 1,
+  );
+}
+
+function paymentMonthKey(paidAt: string): string | null {
+  const dateOnly = /^(\d{4})-(\d{2})-\d{2}/.exec(paidAt);
+  if (dateOnly) return `${dateOnly[1]}-${dateOnly[2]}`;
+  const d = new Date(paidAt);
+  if (Number.isNaN(d.getTime())) return null;
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  return `${y}-${m}`;
+}
+
 function toDateInput(iso: string | null | undefined): string {
   if (!iso) return "";
   const dateOnly = /^(\d{4}-\d{2}-\d{2})/.exec(iso);
@@ -532,6 +578,69 @@ function FeesPageContent() {
       return compareStudentsByMonthCascade(a, b, sortKey, months, dir);
     });
   }, [filteredStudents, sortKey, sortDir, months]);
+
+  const monthlyCollectionTotals = useMemo(() => {
+    const byMonth = new Map<string, number>();
+    for (const mo of months) {
+      byMonth.set(mo.key, 0);
+    }
+    let grandTotal = 0;
+    for (const student of filteredStudents) {
+      const monthsMap = (student.months ?? {}) as Record<string, MonthCell>;
+      for (const mo of months) {
+        const cell = monthsMap[mo.key];
+        if (!cell || cell.isApplicable === false) continue;
+        const paid = num(cell.amountPaid);
+        byMonth.set(mo.key, (byMonth.get(mo.key) ?? 0) + paid);
+        grandTotal += paid;
+      }
+    }
+    return { byMonth, grandTotal };
+  }, [filteredStudents, months]);
+
+  const monthlyDueTotals = useMemo(() => {
+    const byMonth = new Map<string, number>();
+    for (const mo of months) {
+      byMonth.set(mo.key, 0);
+    }
+    let grandTotal = 0;
+    for (const student of filteredStudents) {
+      const monthsMap = (student.months ?? {}) as Record<string, MonthCell>;
+      for (const mo of months) {
+        const cell = monthsMap[mo.key];
+        if (!cell || cell.isApplicable === false) continue;
+        if (!isMonthUpToCurrent(mo)) continue;
+        if (!isDueMonthForStudent(student, mo)) continue;
+        const due = remainingDue(cell) ?? 0;
+        byMonth.set(mo.key, (byMonth.get(mo.key) ?? 0) + due);
+        grandTotal += due;
+      }
+    }
+    return { byMonth, grandTotal };
+  }, [filteredStudents, months]);
+
+  const collectionByPaymentDate = useMemo(() => {
+    const sessionMonthKeys = new Set(months.map((mo) => mo.key));
+    const byMonth = new Map<string, number>();
+    for (const mo of months) {
+      byMonth.set(mo.key, 0);
+    }
+    let grandTotal = 0;
+    for (const student of filteredStudents) {
+      const monthsMap = (student.months ?? {}) as Record<string, MonthCell>;
+      for (const mo of months) {
+        const cell = monthsMap[mo.key];
+        if (!cell) continue;
+        const paid = num(cell.amountPaid);
+        if (paid <= 0 || !cell.paidAt) continue;
+        const payKey = paymentMonthKey(cell.paidAt);
+        if (!payKey || !sessionMonthKeys.has(payKey)) continue;
+        byMonth.set(payKey, (byMonth.get(payKey) ?? 0) + paid);
+        grandTotal += paid;
+      }
+    }
+    return { byMonth, grandTotal };
+  }, [filteredStudents, months]);
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
@@ -958,6 +1067,7 @@ function FeesPageContent() {
               No students match the current search or class filter.
             </p>
           ) : (
+            <div className="space-y-6">
             <div
               className="max-h-[calc(100vh-10rem)] max-w-full overflow-auto rounded-xl border"
               onMouseLeave={clearHover}
@@ -1202,7 +1312,160 @@ function FeesPageContent() {
                     );
                   })}
                 </tbody>
+                <tfoot>
+                  <tr className="bg-muted/80 font-semibold">
+                    <td
+                      className="sticky left-0 z-20 w-8 min-w-8 max-w-8 border-t bg-muted px-1 py-2"
+                      onMouseEnter={clearHover}
+                    />
+                    <td
+                      className="sticky left-8 z-20 w-10 min-w-10 max-w-10 border-t bg-muted px-1 py-2"
+                      onMouseEnter={clearHover}
+                    />
+                    {showClassColumn ? (
+                      <td
+                        className="sticky left-[4.5rem] z-20 w-28 min-w-28 max-w-28 border-t bg-muted px-3 py-2"
+                        onMouseEnter={clearHover}
+                      />
+                    ) : null}
+                    <td
+                      className={cn(
+                        "sticky z-20 w-40 min-w-40 max-w-40 border-t bg-muted px-3 py-2",
+                        showClassColumn ? "left-[11.5rem]" : "left-[4.5rem]",
+                      )}
+                      onMouseEnter={clearHover}
+                    >
+                      Total collection
+                    </td>
+                    <td
+                      className={cn(
+                        "sticky z-20 w-16 min-w-16 max-w-16 border-t bg-muted px-2 py-2 text-muted-foreground shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)]",
+                        showClassColumn ? "left-[21.5rem]" : "left-[14.5rem]",
+                      )}
+                      onMouseEnter={clearHover}
+                    >
+                      {formatIndianAmount(monthlyCollectionTotals.grandTotal)}
+                    </td>
+                    {months.map((mo) => (
+                      <td
+                        key={mo.key}
+                        className={cn(
+                          "border-t px-1 py-2 text-center tabular-nums",
+                          hoverColKey === mo.key ? "bg-sky-100" : "bg-muted/80",
+                        )}
+                        onMouseEnter={() => setHover(null, mo.key)}
+                      >
+                        {formatIndianAmount(
+                          monthlyCollectionTotals.byMonth.get(mo.key) ?? 0,
+                        )}
+                      </td>
+                    ))}
+                  </tr>
+                  <tr className="bg-rose-50 font-semibold text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
+                    <td
+                      className="sticky left-0 z-20 w-8 min-w-8 max-w-8 border-t bg-rose-50 px-1 py-2 dark:bg-rose-950/40"
+                      onMouseEnter={clearHover}
+                    />
+                    <td
+                      className="sticky left-8 z-20 w-10 min-w-10 max-w-10 border-t bg-rose-50 px-1 py-2 dark:bg-rose-950/40"
+                      onMouseEnter={clearHover}
+                    />
+                    {showClassColumn ? (
+                      <td
+                        className="sticky left-[4.5rem] z-20 w-28 min-w-28 max-w-28 border-t bg-rose-50 px-3 py-2 dark:bg-rose-950/40"
+                        onMouseEnter={clearHover}
+                      />
+                    ) : null}
+                    <td
+                      className={cn(
+                        "sticky z-20 w-40 min-w-40 max-w-40 border-t bg-rose-50 px-3 py-2 dark:bg-rose-950/40",
+                        showClassColumn ? "left-[11.5rem]" : "left-[4.5rem]",
+                      )}
+                      onMouseEnter={clearHover}
+                    >
+                      Total due
+                    </td>
+                    <td
+                      className={cn(
+                        "sticky z-20 w-16 min-w-16 max-w-16 border-t bg-rose-50 px-2 py-2 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)] dark:bg-rose-950/40",
+                        showClassColumn ? "left-[21.5rem]" : "left-[14.5rem]",
+                      )}
+                      onMouseEnter={clearHover}
+                    >
+                      {formatIndianAmount(monthlyDueTotals.grandTotal)}
+                    </td>
+                    {months.map((mo) => (
+                      <td
+                        key={mo.key}
+                        className={cn(
+                          "border-t px-1 py-2 text-center tabular-nums",
+                          hoverColKey === mo.key
+                            ? "bg-rose-100 dark:bg-rose-950/60"
+                            : "bg-rose-50 dark:bg-rose-950/40",
+                        )}
+                        onMouseEnter={() => setHover(null, mo.key)}
+                      >
+                        {isMonthUpToCurrent(mo)
+                          ? formatIndianAmount(
+                              monthlyDueTotals.byMonth.get(mo.key) ?? 0,
+                            )
+                          : "—"}
+                      </td>
+                    ))}
+                  </tr>
+                </tfoot>
               </table>
+            </div>
+
+            <div className="space-y-2">
+              <div>
+                <h2 className="text-lg font-semibold">Collection by payment date</h2>
+                <p className="text-sm text-muted-foreground">
+                  Amounts grouped by when payment was received, not the fee
+                  month.
+                </p>
+              </div>
+              <div className="max-w-full overflow-x-auto rounded-xl border">
+                <table className="w-max min-w-full border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-muted">
+                      <th className="sticky left-0 z-10 bg-muted px-3 py-2 text-left font-medium">
+                        &nbsp;
+                      </th>
+                      {months.map((mo) => (
+                        <th
+                          key={mo.key}
+                          className="min-w-[4rem] px-2 py-2 text-center font-medium"
+                        >
+                          {mo.label.split(" ")[0]}
+                        </th>
+                      ))}
+                      <th className="px-3 py-2 text-center font-medium">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td className="sticky left-0 z-10 bg-background px-3 py-2 font-medium whitespace-nowrap">
+                        Amount collected
+                      </td>
+                      {months.map((mo) => (
+                        <td
+                          key={mo.key}
+                          className="px-2 py-2 text-center tabular-nums"
+                        >
+                          {formatIndianAmount(
+                            collectionByPaymentDate.byMonth.get(mo.key) ?? 0,
+                          )}
+                        </td>
+                      ))}
+                      <td className="px-3 py-2 text-center font-semibold tabular-nums">
+                        {formatIndianAmount(collectionByPaymentDate.grandTotal)}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
             </div>
           )}
         </div>
