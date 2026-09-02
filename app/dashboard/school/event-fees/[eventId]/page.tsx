@@ -143,6 +143,28 @@ function num(v: unknown) {
   return typeof v === "number" && !Number.isNaN(v) ? v : Number(v) || 0;
 }
 
+function paymentMonthKey(paidAt: string): string | null {
+  const dateOnly = /^(\d{4})-(\d{2})-\d{2}/.exec(paidAt);
+  if (dateOnly) return `${dateOnly[1]}-${dateOnly[2]}`;
+  const d = new Date(paidAt);
+  if (Number.isNaN(d.getTime())) return null;
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  return `${y}-${m}`;
+}
+
+function paymentMonthLabel(key: string): string {
+  const match = /^(\d{4})-(\d{2})$/.exec(key);
+  if (!match) return key;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  return new Date(Date.UTC(year, month - 1, 1)).toLocaleString("en-IN", {
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
 function todayInput() {
   const d = new Date();
   const y = d.getFullYear();
@@ -406,6 +428,24 @@ export default function EventFeeRegisterPage() {
       });
     });
   }, [filteredStudents, sortKey, sortDirection]);
+
+  const collectionByPaymentDate = useMemo(() => {
+    const byMonth = new Map<string, number>();
+    let grandTotal = 0;
+    for (const student of filteredStudents) {
+      const paid = student.payment.amountPaid;
+      const paidAt = student.payment.paidAt;
+      if (paid <= 0 || !paidAt) continue;
+      const payKey = paymentMonthKey(paidAt);
+      if (!payKey) continue;
+      byMonth.set(payKey, (byMonth.get(payKey) ?? 0) + paid);
+      grandTotal += paid;
+    }
+    const months = [...byMonth.keys()]
+      .sort()
+      .map((key) => ({ key, label: paymentMonthLabel(key) }));
+    return { months, byMonth, grandTotal };
+  }, [filteredStudents]);
 
   const counts = useMemo(() => {
     if (event?.summary) return event.summary;
@@ -725,6 +765,69 @@ export default function EventFeeRegisterPage() {
                   )}
                 </TableBody>
               </Table>
+            </div>
+
+            <div className="space-y-2">
+              <div>
+                <h2 className="text-lg font-semibold">
+                  Collection by payment date
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  Amounts grouped by when payment was received.
+                </p>
+              </div>
+              {collectionByPaymentDate.months.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No collections in the current filter.
+                </p>
+              ) : (
+                <div className="max-w-full overflow-x-auto rounded-xl border">
+                  <table className="w-max min-w-full border-collapse text-xs">
+                    <thead>
+                      <tr className="bg-muted">
+                        <th className="sticky left-0 z-10 bg-muted px-3 py-2 text-left font-medium">
+                          &nbsp;
+                        </th>
+                        {collectionByPaymentDate.months.map((mo) => (
+                          <th
+                            key={mo.key}
+                            className="min-w-[4rem] px-2 py-2 text-center font-medium"
+                          >
+                            {mo.label}
+                          </th>
+                        ))}
+                        <th className="px-3 py-2 text-center font-medium">
+                          Total
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td className="sticky left-0 z-10 bg-background px-3 py-2 font-medium whitespace-nowrap">
+                          Amount collected
+                        </td>
+                        {collectionByPaymentDate.months.map((mo) => (
+                          <td
+                            key={mo.key}
+                            className="px-2 py-2 text-center tabular-nums"
+                          >
+                            ₹
+                            {(
+                              collectionByPaymentDate.byMonth.get(mo.key) ?? 0
+                            ).toLocaleString("en-IN")}
+                          </td>
+                        ))}
+                        <td className="px-3 py-2 text-center font-semibold tabular-nums">
+                          ₹
+                          {collectionByPaymentDate.grandTotal.toLocaleString(
+                            "en-IN",
+                          )}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </>
         )}
