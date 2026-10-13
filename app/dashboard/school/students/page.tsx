@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowDown,
@@ -55,6 +54,7 @@ import {
 } from "@/lib/student-import";
 import { cn } from "@/lib/utils";
 import { StudentDetailSheet } from "@/components/students/student-detail-sheet";
+import { StudentEditSheet } from "@/components/students/student-edit-sheet";
 import { StudentAttendanceSheet } from "@/components/students/student-attendance-sheet";
 import { StudentFeeSheet } from "@/components/students/student-fee-sheet";
 import { LoadingPulseCard } from "@/components/ui/loading-pulse-card";
@@ -64,6 +64,12 @@ type SortKey = "name" | "class";
 type SortDir = "asc" | "desc";
 
 const ALL_CLASSES = "__all__";
+
+type StatusFilter = "all" | "studying" | "left";
+
+function isStudying(s: Row): boolean {
+  return s.isCurrentlyStudying !== false;
+}
 
 function str(v: unknown): string {
   return v == null ? "" : String(v);
@@ -149,7 +155,9 @@ export default function StudentsPage() {
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [filterClassId, setFilterClassId] = useState(ALL_CLASSES);
   const [nameQuery, setNameQuery] = useState("");
+  const [filterStatus, setFilterStatus] = useState<StatusFilter>("all");
   const [detailStudentId, setDetailStudentId] = useState<string | null>(null);
+  const [editStudentId, setEditStudentId] = useState<string | null>(null);
   const [attendanceTarget, setAttendanceTarget] = useState<{
     id: string;
     name: string;
@@ -252,10 +260,13 @@ export default function StudentsPage() {
       if (filterClassId !== ALL_CLASSES && meta.classId !== filterClassId) {
         return false;
       }
+      if (filterStatus !== "all" && isStudying(s) !== (filterStatus === "studying")) {
+        return false;
+      }
       if (!q) return true;
       return studentName(s).toLowerCase().includes(q);
     });
-  }, [students, filterClassId, nameQuery]);
+  }, [students, filterClassId, filterStatus, nameQuery]);
 
   const sortedStudents = useMemo(() => {
     if (!sortKey) return filteredStudents;
@@ -518,6 +529,22 @@ export default function StudentsPage() {
                       )}
                     </SelectItem>
                   ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label>Status</Label>
+              <Select
+                value={filterStatus}
+                onValueChange={(v) => setFilterStatus(v as StatusFilter)}
+              >
+                <SelectTrigger className="w-44">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All statuses</SelectItem>
+                  <SelectItem value="studying">Currently studying</SelectItem>
+                  <SelectItem value="left">Left school</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -842,12 +869,13 @@ export default function StudentsPage() {
                     <SortableHead label="Class" column="class" />
                     <TableHead>Admission #</TableHead>
                     <TableHead>Email</TableHead>
+                    <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {students.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-muted-foreground">
+                      <TableCell colSpan={6} className="text-muted-foreground">
                         {selectedYearName
                           ? `No students for ${selectedYearName}.`
                           : "No students yet."}
@@ -855,17 +883,14 @@ export default function StudentsPage() {
                     </TableRow>
                   ) : sortedStudents.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-muted-foreground">
-                        No students match the current search or class filter.
+                      <TableCell colSpan={6} className="text-muted-foreground">
+                        No students match the current search, class, or status filter.
                       </TableCell>
                     </TableRow>
                   ) : (
                     sortedStudents.map((s, index) => {
                       const user = obj(s.user);
                       const classMeta = studentClassMeta(s);
-                      const editHref = filterYearId
-                        ? `/dashboard/school/students/${str(s.id)}/edit?year=${encodeURIComponent(filterYearId)}`
-                        : `/dashboard/school/students/${str(s.id)}/edit`;
                       return (
                         <TableRow key={str(s.id)}>
                           <TableCell className="text-muted-foreground">
@@ -873,14 +898,15 @@ export default function StudentsPage() {
                           </TableCell>
                           <TableCell className="font-medium">
                             <span className="inline-flex items-center gap-1.5">
-                              <Link
-                                href={editHref}
+                              <button
+                                type="button"
                                 className="inline-flex rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
                                 title="Edit student"
                                 aria-label={`Edit ${str(user.name)}`}
+                                onClick={() => setEditStudentId(str(s.id))}
                               >
                                 <Pencil className="h-3.5 w-3.5" />
-                              </Link>
+                              </button>
                               <button
                                 type="button"
                                 className="inline-flex rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -936,6 +962,13 @@ export default function StudentsPage() {
                           <TableCell>{classMeta.label || "—"}</TableCell>
                           <TableCell>{str(s.admissionNumber)}</TableCell>
                           <TableCell>{str(user.email)}</TableCell>
+                          <TableCell>
+                            {isStudying(s) ? (
+                              <span className="text-green-600">Studying</span>
+                            ) : (
+                              <span className="text-muted-foreground">Left</span>
+                            )}
+                          </TableCell>
                         </TableRow>
                       );
                     })
@@ -952,6 +985,18 @@ export default function StudentsPage() {
           open={detailStudentId != null}
           onOpenChange={(open) => {
             if (!open) setDetailStudentId(null);
+          }}
+        />
+        <StudentEditSheet
+          studentId={editStudentId}
+          academicYearId={filterYearId || null}
+          open={editStudentId != null}
+          onOpenChange={(open) => {
+            if (!open) setEditStudentId(null);
+          }}
+          onSaved={() => {
+            setMessage("Student updated.");
+            void loadStudents();
           }}
         />
         <StudentAttendanceSheet
