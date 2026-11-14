@@ -85,6 +85,46 @@ export const schoolApi = {
     remove: (id: string) =>
       apiFetch<{ ok: boolean }>(`/subjects/${id}`, { method: "DELETE" }),
   },
+  chapters: {
+    list: (classId: string, subjectId: string) =>
+      apiFetch<{ chapters: Array<Record<string, unknown>> }>(
+        `/classes/${classId}/subjects/${subjectId}/chapters`,
+      ),
+    create: (
+      classId: string,
+      subjectId: string,
+      body: { title: string; content: string },
+    ) =>
+      apiFetch<{ chapter: Record<string, unknown> }>(
+        `/classes/${classId}/subjects/${subjectId}/chapters`,
+        { method: "POST", body },
+      ),
+    update: (
+      classId: string,
+      subjectId: string,
+      chapterId: string,
+      body: { title?: string; content?: string },
+    ) =>
+      apiFetch<{ chapter: Record<string, unknown> }>(
+        `/classes/${classId}/subjects/${subjectId}/chapters/${chapterId}`,
+        { method: "PATCH", body },
+      ),
+    remove: (classId: string, subjectId: string, chapterId: string) =>
+      apiFetch<{ ok: boolean }>(
+        `/classes/${classId}/subjects/${subjectId}/chapters/${chapterId}`,
+        { method: "DELETE" },
+      ),
+    move: (
+      classId: string,
+      subjectId: string,
+      chapterId: string,
+      direction: "up" | "down",
+    ) =>
+      apiFetch<{ chapters: Array<Record<string, unknown>> }>(
+        `/classes/${classId}/subjects/${subjectId}/chapters/${chapterId}/move`,
+        { method: "POST", body: { direction } },
+      ),
+  },
   students: {
     list: (opts?: { academicYearId?: string; all?: boolean }) => {
       const params = new URLSearchParams();

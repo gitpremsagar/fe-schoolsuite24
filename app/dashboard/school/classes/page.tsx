@@ -3,15 +3,10 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { ClassCreateSheet } from "@/components/classes/class-create-sheet";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { LoadingPulseCard } from "@/components/ui/loading-pulse-card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,13 +27,9 @@ import {
 } from "@/components/ui/table";
 import { schoolApi } from "@/lib/api/school";
 import { errorMessage, isSubscriptionInactive } from "@/lib/api/subscription";
-import { CLASS_LEVELS, formatClassLabel } from "@/lib/class-levels";
+import { formatClassLabel } from "@/lib/class-levels";
 
 type Row = Record<string, unknown>;
-/** subjectId → staffProfileId (null = no teacher assigned) */
-type SubjectTeacherMap = Record<string, string | null>;
-
-const NO_TEACHER = "__none__";
 
 function str(v: unknown): string {
   return v == null ? "" : String(v);
@@ -62,13 +53,6 @@ function teacherNameFromClass(c: Row): string {
   return str(user.name) || "—";
 }
 
-function subjectsPayload(map: SubjectTeacherMap) {
-  return Object.entries(map).map(([subjectId, staffProfileId]) => ({
-    subjectId,
-    staffProfileId,
-  }));
-}
-
 export default function ClassesPage() {
   const router = useRouter();
   const [years, setYears] = useState<Row[]>([]);
@@ -79,17 +63,7 @@ export default function ClassesPage() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({
-    academicYearId: "",
-    classLevel: "",
-    section: "",
-    monthlyFee: "",
-    subjectTeachers: {} as SubjectTeacherMap,
-  });
-  const [newSubjectName, setNewSubjectName] = useState("");
-  const [addingSubject, setAddingSubject] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editFee, setEditFee] = useState("");
   const [savingFee, setSavingFee] = useState(false);
@@ -142,10 +116,6 @@ export default function ClassesPage() {
         setYears(yr.academicYears);
         setTeachers(staffRes.staff);
         setSubjects(subjectsRes.subjects);
-        const current = yr.academicYears.find((y) => y.isCurrent);
-        if (current) {
-          setForm((p) => ({ ...p, academicYearId: str(current.id) }));
-        }
         await loadClasses();
       } catch (err) {
         handleErr(err, "Failed to load data");
@@ -157,92 +127,6 @@ export default function ClassesPage() {
       active = false;
     };
   }, [handleErr, loadClasses]);
-
-  function toggleFormSubject(subjectId: string) {
-    setForm((prev) => {
-      const next = { ...prev.subjectTeachers };
-      if (Object.prototype.hasOwnProperty.call(next, subjectId)) {
-        delete next[subjectId];
-      } else {
-        next[subjectId] = null;
-      }
-      return { ...prev, subjectTeachers: next };
-    });
-  }
-
-  function setFormSubjectTeacher(subjectId: string, staffProfileId: string) {
-    setForm((prev) => ({
-      ...prev,
-      subjectTeachers: {
-        ...prev.subjectTeachers,
-        [subjectId]: staffProfileId === NO_TEACHER ? null : staffProfileId,
-      },
-    }));
-  }
-
-  async function onAddSubjectInline() {
-    const trimmed = newSubjectName.trim();
-    if (!trimmed) return;
-    setAddingSubject(true);
-    setError("");
-    try {
-      const res = await schoolApi.subjects.create({ name: trimmed });
-      const id = str(res.subject.id);
-      setNewSubjectName("");
-      await loadSubjects();
-      setForm((p) => ({
-        ...p,
-        subjectTeachers: Object.prototype.hasOwnProperty.call(
-          p.subjectTeachers,
-          id,
-        )
-          ? p.subjectTeachers
-          : { ...p.subjectTeachers, [id]: null },
-      }));
-    } catch (err) {
-      handleErr(err, "Failed to create subject");
-    } finally {
-      setAddingSubject(false);
-    }
-  }
-
-  async function onCreate(e: React.FormEvent) {
-    e.preventDefault();
-    setSaving(true);
-    setError("");
-    setMessage("");
-    try {
-      const fee =
-        form.monthlyFee.trim() === "" ? null : Number(form.monthlyFee);
-      if (fee != null && (Number.isNaN(fee) || fee < 0)) {
-        setError("Monthly fee must be a non-negative number.");
-        setSaving(false);
-        return;
-      }
-      await schoolApi.classes.create({
-        academicYearId: form.academicYearId,
-        classLevel: form.classLevel,
-        ...(form.section ? { section: form.section } : {}),
-        monthlyFee: fee,
-        subjects: subjectsPayload(form.subjectTeachers),
-      });
-      setForm((p) => ({
-        ...p,
-        classLevel: "",
-        section: "",
-        monthlyFee: "",
-        subjectTeachers: {},
-      }));
-      setNewSubjectName("");
-      setShowForm(false);
-      setMessage("Class created.");
-      await loadClasses(filterYear);
-    } catch (err) {
-      handleErr(err, "Failed to create class");
-    } finally {
-      setSaving(false);
-    }
-  }
 
   async function saveMonthlyFee(classId: string) {
     setSavingFee(true);
@@ -289,31 +173,6 @@ export default function ClassesPage() {
     }
   }
 
-  function renderTeacherSelect(
-    subjectId: string,
-    value: string | null | undefined,
-    onChange: (staffProfileId: string) => void,
-  ) {
-    return (
-      <Select value={value || NO_TEACHER} onValueChange={onChange}>
-        <SelectTrigger className="h-8 w-40">
-          <SelectValue placeholder="Teacher" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value={NO_TEACHER}>No teacher</SelectItem>
-          {teachers.map((t) => {
-            const user = obj(t.user);
-            return (
-              <SelectItem key={str(t.id)} value={str(t.id)}>
-                {str(user.name)}
-              </SelectItem>
-            );
-          })}
-        </SelectContent>
-      </Select>
-    );
-  }
-
   return (
     <DashboardShell allowedRoles={["ADMIN"]}>
       <div className="space-y-6">
@@ -325,174 +184,26 @@ export default function ClassesPage() {
               view subjects and students.
             </p>
           </div>
-          <Button
-            type="button"
-            variant={showForm ? "outline" : "default"}
-            onClick={() => setShowForm((v) => !v)}
-          >
-            {showForm ? "Cancel" : "Add class"}
+          <Button type="button" onClick={() => setFormOpen(true)}>
+            Add class
           </Button>
         </div>
 
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
         {message ? <p className="text-sm text-green-600">{message}</p> : null}
 
-        {showForm ? (
-          <Card>
-            <CardHeader>
-              <CardTitle>New class</CardTitle>
-              <CardDescription>
-                Choose a class level and optional section for an academic year.
-                Assign subjects and the teacher for each subject.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {years.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  Create an academic year first.
-                </p>
-              ) : (
-                <form className="grid gap-4 md:grid-cols-2" onSubmit={onCreate}>
-                  <div className="space-y-1">
-                    <Label>Academic year</Label>
-                    <Select
-                      value={form.academicYearId}
-                      onValueChange={(v) =>
-                        setForm((p) => ({ ...p, academicYearId: v }))
-                      }
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select year" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {years.map((y) => (
-                          <SelectItem key={str(y.id)} value={str(y.id)}>
-                            {str(y.name)}
-                            {y.isCurrent ? " (current)" : ""}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1">
-                    <Label>Class</Label>
-                    <Select
-                      value={form.classLevel}
-                      onValueChange={(v) =>
-                        setForm((p) => ({ ...p, classLevel: v }))
-                      }
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select class" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {CLASS_LEVELS.map((level) => (
-                          <SelectItem key={level} value={level}>
-                            {level}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1">
-                    <Label>Section</Label>
-                    <Input
-                      value={form.section}
-                      placeholder="A"
-                      onChange={(e) =>
-                        setForm((p) => ({ ...p, section: e.target.value }))
-                      }
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label>Monthly fee</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      value={form.monthlyFee}
-                      placeholder="Amount"
-                      onChange={(e) =>
-                        setForm((p) => ({ ...p, monthlyFee: e.target.value }))
-                      }
-                    />
-                  </div>
-                  <div className="space-y-2 md:col-span-2">
-                    <Label>Subjects</Label>
-                    <div className="max-h-56 space-y-1 overflow-y-auto rounded-lg border p-2">
-                      {subjects.length === 0 ? (
-                        <p className="px-1 py-2 text-sm text-muted-foreground">
-                          No subjects yet. Add one below.
-                        </p>
-                      ) : (
-                        subjects.map((s) => {
-                          const id = str(s.id);
-                          const checked =
-                            Object.prototype.hasOwnProperty.call(
-                              form.subjectTeachers,
-                              id,
-                            );
-                          return (
-                            <div
-                              key={id}
-                              className="flex flex-wrap items-center gap-2 rounded px-1 py-1 text-sm hover:bg-muted/50"
-                            >
-                              <label className="flex min-w-[140px] cursor-pointer items-center gap-2">
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={() => toggleFormSubject(id)}
-                                />
-                                {str(s.name)}
-                              </label>
-                              {checked
-                                ? renderTeacherSelect(
-                                    id,
-                                    form.subjectTeachers[id],
-                                    (v) => setFormSubjectTeacher(id, v),
-                                  )
-                                : null}
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
-                    <div className="flex flex-wrap items-end gap-2">
-                      <div className="min-w-[180px] flex-1 space-y-1">
-                        <Label className="text-muted-foreground">
-                          Add new subject
-                        </Label>
-                        <Input
-                          value={newSubjectName}
-                          placeholder="e.g. Mathematics"
-                          onChange={(e) => setNewSubjectName(e.target.value)}
-                        />
-                      </div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        disabled={addingSubject || !newSubjectName.trim()}
-                        onClick={() => void onAddSubjectInline()}
-                      >
-                        {addingSubject ? "Adding..." : "Add subject"}
-                      </Button>
-                    </div>
-                  </div>
-                  <div className="flex items-end md:col-span-2">
-                    <Button
-                      type="submit"
-                      disabled={
-                        saving || !form.academicYearId || !form.classLevel
-                      }
-                    >
-                      {saving ? "Creating..." : "Create class"}
-                    </Button>
-                  </div>
-                </form>
-              )}
-            </CardContent>
-          </Card>
-        ) : null}
+        <ClassCreateSheet
+          open={formOpen}
+          onOpenChange={setFormOpen}
+          years={years}
+          teachers={teachers}
+          subjects={subjects}
+          onSubjectCreated={loadSubjects}
+          onCreated={async () => {
+            setMessage("Class created.");
+            await loadClasses(filterYear);
+          }}
+        />
 
         <div className="flex items-end gap-3">
           <div className="space-y-1">

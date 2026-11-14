@@ -1,8 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
+import {
+  SubjectChaptersSheet,
+  type ChapterClassOption,
+} from "@/components/subjects/subject-chapters-sheet";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -24,6 +28,7 @@ import {
 } from "@/components/ui/table";
 import { schoolApi } from "@/lib/api/school";
 import { errorMessage, isSubscriptionInactive } from "@/lib/api/subscription";
+import { formatClassLabel } from "@/lib/class-levels";
 
 type Row = Record<string, unknown>;
 
@@ -36,10 +41,15 @@ function num(v: unknown): number {
 function obj(v: unknown): Row {
   return v && typeof v === "object" ? (v as Row) : {};
 }
+function arr(v: unknown): Row[] {
+  return Array.isArray(v) ? (v as Row[]) : [];
+}
 
 export default function SubjectsPage() {
   const router = useRouter();
   const [subjects, setSubjects] = useState<Row[]>([]);
+  const [classes, setClasses] = useState<Row[]>([]);
+  const [chaptersSubject, setChaptersSubject] = useState<Row | null>(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
@@ -63,11 +73,13 @@ export default function SubjectsPage() {
   );
 
   const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
     try {
-      const res = await schoolApi.subjects.list();
+      const [res, classesRes] = await Promise.all([
+        schoolApi.subjects.list(),
+        schoolApi.classes.list(),
+      ]);
       setSubjects(res.subjects);
+      setClasses(classesRes.classes);
     } catch (err) {
       handleErr(err, "Failed to load subjects");
     } finally {
@@ -75,8 +87,36 @@ export default function SubjectsPage() {
     }
   }, [handleErr]);
 
+  const chapterSubjectId = chaptersSubject ? str(chaptersSubject.id) : "";
+
+  const chapterClassOptions = useMemo<ChapterClassOption[]>(() => {
+    if (!chapterSubjectId) return [];
+    const options: ChapterClassOption[] = [];
+    for (const klass of classes) {
+      const isAssigned = arr(klass.classSubjects).some(
+        (link) => str(obj(link).subjectId) === chapterSubjectId,
+      );
+      if (!isAssigned) continue;
+      options.push({
+        classId: str(klass.id),
+        label: formatClassLabel(
+          str(klass.classLevel),
+          str(klass.section) || null,
+        ),
+        yearName: str(obj(klass.academicYear).name),
+      });
+    }
+    options.sort(
+      (a, b) =>
+        a.yearName.localeCompare(b.yearName) || a.label.localeCompare(b.label),
+    );
+    return options;
+  }, [classes, chapterSubjectId]);
+
   useEffect(() => {
-    void load();
+    void (async () => {
+      await load();
+    })();
   }, [load]);
 
   async function onCreate(e: React.FormEvent) {
@@ -197,7 +237,7 @@ export default function SubjectsPage() {
                   <TableRow>
                     <TableHead>Name</TableHead>
                     <TableHead>Classes</TableHead>
-                    <TableHead className="w-[220px]">Actions</TableHead>
+                    <TableHead className="w-[320px]">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -252,6 +292,14 @@ export default function SubjectsPage() {
                                   type="button"
                                   size="sm"
                                   variant="outline"
+                                  onClick={() => setChaptersSubject(s)}
+                                >
+                                  Chapters
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
                                   onClick={() => {
                                     setEditingId(id);
                                     setEditName(str(s.name));
@@ -283,6 +331,16 @@ export default function SubjectsPage() {
           </Card>
         )}
       </div>
+
+      <SubjectChaptersSheet
+        open={chaptersSubject !== null}
+        onOpenChange={(open) => {
+          if (!open) setChaptersSubject(null);
+        }}
+        subjectId={chapterSubjectId}
+        subjectName={chaptersSubject ? str(chaptersSubject.name) : ""}
+        classOptions={chapterClassOptions}
+      />
     </DashboardShell>
   );
 }
