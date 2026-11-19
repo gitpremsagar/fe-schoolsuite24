@@ -1,4 +1,5 @@
 import { apiFetch } from "@/lib/api/client";
+import type { ChapterAnswer } from "@/lib/chapter-answers";
 
 export const schoolApi = {
   me: () => apiFetch<{ school: Record<string, unknown> }>("/schools/me"),
@@ -93,7 +94,7 @@ export const schoolApi = {
     create: (
       classId: string,
       subjectId: string,
-      body: { title: string; content: string },
+      body: { title: string; content: string; exercise?: string },
     ) =>
       apiFetch<{ chapter: Record<string, unknown> }>(
         `/classes/${classId}/subjects/${subjectId}/chapters`,
@@ -103,7 +104,12 @@ export const schoolApi = {
       classId: string,
       subjectId: string,
       chapterId: string,
-      body: { title?: string; content?: string },
+      body: {
+        title?: string;
+        content?: string;
+        exercise?: string;
+        answers?: ChapterAnswer[];
+      },
     ) =>
       apiFetch<{ chapter: Record<string, unknown> }>(
         `/classes/${classId}/subjects/${subjectId}/chapters/${chapterId}`,
@@ -123,6 +129,36 @@ export const schoolApi = {
       apiFetch<{ chapters: Array<Record<string, unknown>> }>(
         `/classes/${classId}/subjects/${subjectId}/chapters/${chapterId}/move`,
         { method: "POST", body: { direction } },
+      ),
+    generate: (classId: string, subjectId: string, formData: FormData) =>
+      apiFetch<{
+        draft: { title: string; content: string; exercise: string };
+      }>(`/classes/${classId}/subjects/${subjectId}/chapters/generate`, {
+        method: "POST",
+        body: formData,
+      }),
+    generateExercise: (
+      classId: string,
+      subjectId: string,
+      chapterId: string,
+      formData: FormData,
+    ) =>
+      apiFetch<{ draft: { exercise: string } }>(
+        `/classes/${classId}/subjects/${subjectId}/chapters/${chapterId}/exercise/generate`,
+        { method: "POST", body: formData },
+      ),
+    generateAnswers: (
+      classId: string,
+      subjectId: string,
+      chapterId: string,
+      effort: "low" | "high" | "max",
+    ) =>
+      apiFetch<{
+        chapter: Record<string, unknown>;
+        answers: ChapterAnswer[];
+      }>(
+        `/classes/${classId}/subjects/${subjectId}/chapters/${chapterId}/answers/generate`,
+        { method: "POST", body: { effort } },
       ),
   },
   students: {

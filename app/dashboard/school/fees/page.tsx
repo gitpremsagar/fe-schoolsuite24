@@ -227,6 +227,39 @@ function monthYearLabel(year: number, month: number): string {
   });
 }
 
+function currentMonthKey(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function monthKeyLabel(key: string): string {
+  const match = /^(\d{4})-(\d{2})$/.exec(key);
+  if (!match) return key;
+  return monthYearLabel(Number(match[1]), Number(match[2]));
+}
+
+/** Day of month for a payment timestamp, read in UTC to avoid timezone drift. */
+function paymentDayOfMonth(iso: string): number | null {
+  const dateOnly = /^\d{4}-\d{2}-(\d{2})/.exec(iso);
+  if (dateOnly) return Number(dateOnly[1]);
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.getUTCDate();
+}
+
+function formatCollectionDay(monthKey: string, day: number): string {
+  const match = /^(\d{4})-(\d{2})$/.exec(monthKey);
+  if (!match) return String(day);
+  return new Date(
+    Date.UTC(Number(match[1]), Number(match[2]) - 1, day),
+  ).toLocaleDateString("en-IN", {
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+    timeZone: "UTC",
+  });
+}
+
 function statusLetter(status: FeeStatus): string {
   switch (status) {
     case "PAID":
@@ -456,6 +489,7 @@ function FeesPageContent() {
   const [editError, setEditError] = useState("");
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [collectionMonth, setCollectionMonth] = useState(currentMonthKey);
   const [editStudentId, setEditStudentId] = useState<string | null>(null);
   const [hoverRowId, setHoverRowId] = useState<string | null>(null);
   const [hoverColKey, setHoverColKey] = useState<string | null>(null);
@@ -641,6 +675,46 @@ function FeesPageContent() {
     }
     return { byMonth, grandTotal };
   }, [filteredStudents, months]);
+
+  const collectionMonthOptions = useMemo(() => {
+    const keys = new Set(months.map((mo) => mo.key));
+    keys.add(currentMonthKey());
+    if (collectionMonth) keys.add(collectionMonth);
+    return [...keys].sort();
+  }, [months, collectionMonth]);
+
+  const dailyCollection = useMemo(() => {
+    const byDay = new Map<number, { amount: number; payments: number }>();
+    let total = 0;
+    let payments = 0;
+
+    if (collectionMonth) {
+      for (const student of filteredStudents) {
+        const monthsMap = (student.months ?? {}) as Record<string, MonthCell>;
+        for (const mo of months) {
+          const cell = monthsMap[mo.key];
+          if (!cell?.paidAt) continue;
+          const paid = num(cell.amountPaid);
+          if (paid <= 0) continue;
+          if (paymentMonthKey(cell.paidAt) !== collectionMonth) continue;
+          const day = paymentDayOfMonth(cell.paidAt);
+          if (day == null) continue;
+          const entry = byDay.get(day) ?? { amount: 0, payments: 0 };
+          entry.amount += paid;
+          entry.payments += 1;
+          byDay.set(day, entry);
+          total += paid;
+          payments += 1;
+        }
+      }
+    }
+
+    const days = [...byDay.entries()]
+      .map(([day, value]) => ({ day, ...value }))
+      .sort((a, b) => a.day - b.day);
+    const maxAmount = days.reduce((max, d) => Math.max(max, d.amount), 0);
+    return { days, total, payments, maxAmount };
+  }, [filteredStudents, months, collectionMonth]);
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
@@ -1463,6 +1537,109 @@ function FeesPageContent() {
                       </td>
                     </tr>
                   </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-end justify-between gap-2">
+                <div>
+                  <h2 className="text-lg font-semibold">Collection by date</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Daily total of payments received in the selected month,
+                    using the current class and search filters.
+                  </p>
+                </div>
+                <Select
+                  value={collectionMonth}
+                  onValueChange={setCollectionMonth}
+                >
+                  <SelectTrigger
+                    className="w-48"
+                    aria-label="Collection month"
+                  >
+                    <SelectValue placeholder="Select month" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {collectionMonthOptions.map((key) => (
+                      <SelectItem key={key} value={key}>
+                        {monthKeyLabel(key)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="max-w-full overflow-x-auto rounded-xl border">
+                <table className="w-full min-w-[32rem] border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-muted">
+                      <th className="px-3 py-2 text-left font-medium">Date</th>
+                      <th className="w-24 px-3 py-2 text-right font-medium">
+                        Payments
+                      </th>
+                      <th className="w-36 px-3 py-2 text-right font-medium">
+                        Amount collected
+                      </th>
+                      <th className="w-1/3 px-3 py-2 text-left font-medium">
+                        Share
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dailyCollection.days.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={4}
+                          className="px-3 py-6 text-center text-muted-foreground"
+                        >
+                          No collections recorded in{" "}
+                          {monthKeyLabel(collectionMonth)} for the current
+                          filters.
+                        </td>
+                      </tr>
+                    ) : (
+                      dailyCollection.days.map((entry) => (
+                        <tr key={entry.day} className="border-t">
+                          <td className="px-3 py-1.5 font-medium whitespace-nowrap">
+                            {formatCollectionDay(collectionMonth, entry.day)}
+                          </td>
+                          <td className="px-3 py-1.5 text-right tabular-nums">
+                            {entry.payments}
+                          </td>
+                          <td className="px-3 py-1.5 text-right font-medium tabular-nums">
+                            {formatIndianAmount(entry.amount)}
+                          </td>
+                          <td className="px-3 py-1.5">
+                            <div className="h-2 w-full rounded-full bg-emerald-100">
+                              <div
+                                className="h-2 rounded-full bg-emerald-500"
+                                style={{
+                                  width: `${Math.max(
+                                    4,
+                                    (entry.amount /
+                                      Math.max(1, dailyCollection.maxAmount)) *
+                                      100,
+                                  )}%`,
+                                }}
+                              />
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t bg-muted/80 font-semibold">
+                      <td className="px-3 py-2">Total</td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {dailyCollection.payments}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {formatIndianAmount(dailyCollection.total)}
+                      </td>
+                      <td className="px-3 py-2" />
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             </div>

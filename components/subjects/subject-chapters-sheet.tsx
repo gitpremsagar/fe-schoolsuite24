@@ -21,6 +21,9 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
+import { AiChapterPanel } from "@/components/subjects/ai-chapter-panel";
+import { ChapterAnswersSection } from "@/components/subjects/chapter-answers-section";
+import { ChapterExerciseSection } from "@/components/subjects/chapter-exercise-section";
 import { schoolApi } from "@/lib/api/school";
 import { errorMessage, isSubscriptionInactive } from "@/lib/api/subscription";
 
@@ -34,6 +37,9 @@ export type ChapterClassOption = {
 
 function str(v: unknown): string {
   return v == null ? "" : String(v);
+}
+function obj(v: unknown): Row {
+  return v && typeof v === "object" ? (v as Row) : {};
 }
 
 type SubjectChaptersSheetProps = {
@@ -58,6 +64,7 @@ export function SubjectChaptersSheet({
   const [error, setError] = useState("");
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
+  const [exercise, setExercise] = useState("");
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
@@ -65,6 +72,9 @@ export function SubjectChaptersSheet({
   const [savingEdit, setSavingEdit] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [movingId, setMovingId] = useState<string | null>(null);
+  const [view, setView] = useState<"list" | "ai" | "ai-exercise">("list");
+  const [aiChapter, setAiChapter] = useState<Row | null>(null);
+  const [notice, setNotice] = useState("");
 
   const handleErr = useCallback(
     (err: unknown, fallback: string) => {
@@ -107,9 +117,13 @@ export function SubjectChaptersSheet({
       setError("");
       setTitle("");
       setContent("");
+      setExercise("");
       setEditingId(null);
       setEditTitle("");
       setEditContent("");
+      setView("list");
+      setAiChapter(null);
+      setNotice("");
       if (!firstClassId) {
         setLoading(false);
         return;
@@ -135,9 +149,13 @@ export function SubjectChaptersSheet({
       setError("");
       setTitle("");
       setContent("");
+      setExercise("");
       setEditingId(null);
       setEditTitle("");
       setEditContent("");
+      setView("list");
+      setAiChapter(null);
+      setNotice("");
     }
     onOpenChange(next);
   }
@@ -148,12 +166,37 @@ export function SubjectChaptersSheet({
     setEditContent("");
     setTitle("");
     setContent("");
+    setExercise("");
   }
 
   function onClassChange(nextClassId: string) {
     setClassId(nextClassId);
     resetEditor();
+    setView("list");
+    setAiChapter(null);
+    setNotice("");
     void loadChapters(nextClassId);
+  }
+
+  async function autoGenerateAnswers(chapterId: string, message: string) {
+    if (!classId || !chapterId) return;
+    setNotice(message);
+    try {
+      await schoolApi.chapters.generateAnswers(
+        classId,
+        subjectId,
+        chapterId,
+        "high",
+      );
+      await loadChapters(classId);
+    } catch (err) {
+      handleErr(
+        err,
+        "Saved, but generating answers failed. Use the Answers section to retry.",
+      );
+    } finally {
+      setNotice("");
+    }
   }
 
   async function onAddChapter(e: React.FormEvent) {
@@ -163,13 +206,21 @@ export function SubjectChaptersSheet({
     setSaving(true);
     setError("");
     try {
-      await schoolApi.chapters.create(classId, subjectId, {
+      const res = await schoolApi.chapters.create(classId, subjectId, {
         title: trimmed,
         content,
+        exercise,
       });
       setTitle("");
       setContent("");
+      setExercise("");
       await loadChapters(classId);
+      if (exercise.trim()) {
+        await autoGenerateAnswers(
+          str(obj(res.chapter).id),
+          "Chapter created. The AI is reading it and writing answers...",
+        );
+      }
     } catch (err) {
       handleErr(err, "Failed to create chapter");
     } finally {
@@ -236,19 +287,72 @@ export function SubjectChaptersSheet({
     }
   }
 
+  async function onAiSaved(result?: {
+    chapterId?: string;
+    exercise?: string;
+    hadAnswers?: boolean;
+  }) {
+    await loadChapters(classId);
+    setView("list");
+    setAiChapter(null);
+
+    if (
+      result?.chapterId &&
+      result.exercise?.trim() &&
+      !result.hadAnswers
+    ) {
+      await autoGenerateAnswers(
+        result.chapterId,
+        "Saved. The AI is reading the chapter and writing answers...",
+      );
+    }
+  }
+
   return (
     <Sheet open={open} onOpenChange={handleOpenChange}>
       <SheetContent className="flex w-full flex-col gap-0 overflow-y-auto sm:max-w-2xl">
         <SheetHeader>
-          <SheetTitle>{subjectName || "Subject"} chapters</SheetTitle>
+          <SheetTitle>
+            {view === "ai"
+              ? "AI chapter assistant"
+              : view === "ai-exercise"
+                ? "AI exercise assistant"
+                : `${subjectName || "Subject"} chapters`}
+          </SheetTitle>
           <SheetDescription>
-            Chapters are stored per class. Pick a class to view and edit its
-            chapter list.
+            {view === "ai"
+              ? "Photograph the chapter pages, let the AI transcribe them, then review before saving."
+              : view === "ai-exercise"
+                ? "Photograph the exercise pages. The AI extracts the questions and answers them from the chapter."
+                : "Chapters are stored per class. Pick a class to view and edit its chapter list."}
           </SheetDescription>
         </SheetHeader>
 
         <div className="flex-1 space-y-4 px-4 pb-4">
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          {view !== "list" && classId ? (
+            <AiChapterPanel
+              classId={classId}
+              classLabel={
+                classOptions.find((option) => option.classId === classId)
+                  ?.label ?? ""
+              }
+              subjectId={subjectId}
+              existingChapter={aiChapter}
+              mode={view === "ai-exercise" ? "exercise" : "chapter"}
+              onBack={() => {
+                setView("list");
+                setAiChapter(null);
+              }}
+              onSaved={onAiSaved}
+            />
+          ) : (
+            <>
+              {error ? (
+                <p className="text-sm text-destructive">{error}</p>
+              ) : null}
+              {notice ? (
+                <p className="text-sm text-muted-foreground">{notice}</p>
+              ) : null}
 
           <div className="space-y-1">
             <Label>Class</Label>
@@ -282,8 +386,21 @@ export function SubjectChaptersSheet({
                 className="space-y-3 rounded-xl border p-3"
                 onSubmit={onAddChapter}
               >
-                <div className="space-y-1">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <Label>New chapter</Label>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setAiChapter(null);
+                      setView("ai");
+                    }}
+                  >
+                    Generate with AI
+                  </Button>
+                </div>
+                <div className="space-y-1">
                   <Input
                     value={title}
                     placeholder="e.g. Chapter 1: Numbers"
@@ -297,6 +414,15 @@ export function SubjectChaptersSheet({
                     value={content}
                     placeholder="Write the chapter text here..."
                     onChange={(e) => setContent(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-muted-foreground">Exercise</Label>
+                  <Textarea
+                    className="min-h-20"
+                    value={exercise}
+                    placeholder="Write the end-of-chapter exercise here..."
+                    onChange={(e) => setExercise(e.target.value)}
                   />
                 </div>
                 <div className="flex justify-end">
@@ -403,6 +529,17 @@ export function SubjectChaptersSheet({
                                   type="button"
                                   size="sm"
                                   variant="outline"
+                                  onClick={() => {
+                                    setAiChapter(chapter);
+                                    setView("ai");
+                                  }}
+                                >
+                                  AI
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
                                   onClick={() => startEdit(chapter)}
                                 >
                                   Edit
@@ -429,6 +566,24 @@ export function SubjectChaptersSheet({
                                 No content yet.
                               </p>
                             )}
+                            <ChapterExerciseSection
+                              classId={classId}
+                              subjectId={subjectId}
+                              chapter={chapter}
+                              onChanged={() => loadChapters(classId)}
+                              onError={handleErr}
+                              onOpenAi={() => {
+                                setAiChapter(chapter);
+                                setView("ai-exercise");
+                              }}
+                            />
+                            <ChapterAnswersSection
+                              classId={classId}
+                              subjectId={subjectId}
+                              chapter={chapter}
+                              onChanged={() => loadChapters(classId)}
+                              onError={handleErr}
+                            />
                           </>
                         )}
                       </div>
@@ -436,6 +591,8 @@ export function SubjectChaptersSheet({
                   })}
                 </div>
               )}
+            </>
+          )}
             </>
           )}
         </div>

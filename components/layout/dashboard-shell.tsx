@@ -50,6 +50,7 @@ function navForRole(role: UserRole): NavItem[] {
     case "TEACHER":
       return [
         { href: "/dashboard/teacher", label: "Overview" },
+        { href: "/dashboard/teacher/chapters", label: "Chapters" },
         { href: "/dashboard/teacher/exams", label: "Exams" },
         { href: "/dashboard/teacher/attendance", label: "Student Attendance" },
         { href: "/dashboard/teacher/punch", label: "My Punch" },
