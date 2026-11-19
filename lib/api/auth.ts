@@ -1,5 +1,9 @@
 import { apiFetch, refreshAccessToken, ApiRequestError } from "@/lib/api/client";
-import { setAccessToken, clearAccessToken } from "@/lib/auth/session";
+import {
+  setAccessToken,
+  setUser,
+  clearAccessToken,
+} from "@/lib/auth/session";
 import type { AuthResponse, PublicUser } from "@/lib/types";
 
 export async function registerSchool(body: Record<string, string>) {
@@ -40,4 +44,20 @@ export async function refreshSession(): Promise<AuthResponse> {
 
 export async function getMe() {
   return apiFetch<{ user: PublicUser & Record<string, unknown> }>("/auth/me");
+}
+
+/**
+ * Change the account's login email.
+ * The server re-issues tokens for the new identity; store them and sync the user.
+ */
+export async function changeEmail(email: string, password: string) {
+  const data = await apiFetch<AuthResponse>("/auth/me/email", {
+    method: "PATCH",
+    body: { email, password },
+  });
+  setAccessToken(data.accessToken);
+  if (data.user) {
+    setUser(data.user);
+  }
+  return data;
 }

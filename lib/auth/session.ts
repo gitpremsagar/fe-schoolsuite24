@@ -1,5 +1,10 @@
 import { getStore } from "@/lib/store";
-import { clearAuth, setAccessToken as setToken } from "@/lib/store/auth-slice";
+import {
+  clearAuth,
+  setAccessToken as setToken,
+  setUser as setUserAction,
+} from "@/lib/store/auth-slice";
+import type { PublicUser } from "@/lib/types";
 
 const LEGACY_ACCESS_TOKEN_KEY = "school_erp_access_token";
 
@@ -19,6 +24,10 @@ export function getAccessToken(): string | null {
 
 export function setAccessToken(token: string) {
   getStore().dispatch(setToken(token));
+}
+
+export function setUser(user: PublicUser) {
+  getStore().dispatch(setUserAction(user));
 }
 
 export function clearAccessToken() {

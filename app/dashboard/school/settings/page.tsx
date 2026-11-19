@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { changeEmail, getMe } from "@/lib/api/auth";
 import { schoolApi } from "@/lib/api/school";
 import { errorMessage, isSubscriptionInactive } from "@/lib/api/subscription";
 
@@ -46,6 +47,13 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [adminPassword, setAdminPassword] = useState("");
 
+  const [accountEmail, setAccountEmail] = useState("");
+  const [newEmail, setNewEmail] = useState("");
+  const [emailPassword, setEmailPassword] = useState("");
+  const [emailError, setEmailError] = useState("");
+  const [emailMessage, setEmailMessage] = useState("");
+  const [emailSaving, setEmailSaving] = useState(false);
+
   const handleErr = useCallback(
     (err: unknown, fallback: string) => {
       if (isSubscriptionInactive(err)) {
@@ -76,10 +84,48 @@ export default function SettingsPage() {
       .finally(() => {
         if (active) setLoading(false);
       });
+    getMe()
+      .then((res) => {
+        if (active) setAccountEmail(res.user.email);
+      })
+      .catch(() => {
+        // The account email is informational; the rest of the page still works.
+      });
     return () => {
       active = false;
     };
   }, [handleErr]);
+
+  async function onChangeEmail(e: React.FormEvent) {
+    e.preventDefault();
+    const email = newEmail.trim();
+    if (!email) {
+      setEmailError("Enter the new login email.");
+      return;
+    }
+    if (!emailPassword.trim()) {
+      setEmailError("Enter your current password to change the login email.");
+      return;
+    }
+    setEmailSaving(true);
+    setEmailError("");
+    setEmailMessage("");
+    try {
+      const res = await changeEmail(email, emailPassword);
+      setAccountEmail(res.user?.email ?? email);
+      setNewEmail("");
+      setEmailPassword("");
+      setEmailMessage("Login email updated. Use the new email next time you sign in.");
+    } catch (err) {
+      if (isSubscriptionInactive(err)) {
+        router.replace("/access-blocked");
+        return;
+      }
+      setEmailError(errorMessage(err, "Failed to change login email"));
+    } finally {
+      setEmailSaving(false);
+    }
+  }
 
   async function onSave(e: React.FormEvent) {
     e.preventDefault();
@@ -181,6 +227,62 @@ export default function SettingsPage() {
                 </div>
               </form>
             )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Login email</CardTitle>
+            <CardDescription>
+              The email address you use to sign in to the dashboard.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form className="grid gap-4 md:grid-cols-2" onSubmit={onChangeEmail}>
+              <div className="space-y-1 md:col-span-2">
+                <Label>Current login email</Label>
+                <Input value={accountEmail || "—"} readOnly disabled />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="new-login-email">New email</Label>
+                <Input
+                  id="new-login-email"
+                  type="email"
+                  autoComplete="email"
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  placeholder="you@example.com"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="login-email-password">
+                  Current password <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="login-email-password"
+                  type="password"
+                  autoComplete="current-password"
+                  value={emailPassword}
+                  onChange={(e) => setEmailPassword(e.target.value)}
+                  placeholder="Required to change email"
+                />
+              </div>
+              {emailError ? (
+                <p className="text-sm text-destructive md:col-span-2">
+                  {emailError}
+                </p>
+              ) : null}
+              {emailMessage ? (
+                <p className="text-sm text-green-600 md:col-span-2">
+                  {emailMessage}
+                </p>
+              ) : null}
+              <div className="md:col-span-2">
+                <Button type="submit" disabled={emailSaving}>
+                  {emailSaving ? "Updating..." : "Change login email"}
+                </Button>
+              </div>
+            </form>
           </CardContent>
         </Card>
       </div>
