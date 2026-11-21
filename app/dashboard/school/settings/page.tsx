@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { changeEmail, getMe } from "@/lib/api/auth";
+import { changeEmail, changePassword, getMe } from "@/lib/api/auth";
 import { schoolApi } from "@/lib/api/school";
 import { errorMessage, isSubscriptionInactive } from "@/lib/api/subscription";
 
@@ -53,6 +53,13 @@ export default function SettingsPage() {
   const [emailError, setEmailError] = useState("");
   const [emailMessage, setEmailMessage] = useState("");
   const [emailSaving, setEmailSaving] = useState(false);
+
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [passwordMessage, setPasswordMessage] = useState("");
+  const [passwordSaving, setPasswordSaving] = useState(false);
 
   const handleErr = useCallback(
     (err: unknown, fallback: string) => {
@@ -124,6 +131,54 @@ export default function SettingsPage() {
       setEmailError(errorMessage(err, "Failed to change login email"));
     } finally {
       setEmailSaving(false);
+    }
+  }
+
+  async function onChangePassword(e: React.FormEvent) {
+    e.preventDefault();
+    if (!currentPassword) {
+      setPasswordError("Enter your current password.");
+      return;
+    }
+    if (newPassword.length < 8) {
+      setPasswordError("New password must be at least 8 characters.");
+      return;
+    }
+    if (!/[A-Za-z]/.test(newPassword) || !/\d/.test(newPassword)) {
+      setPasswordError(
+        "New password must include at least one letter and one number.",
+      );
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError("New passwords do not match.");
+      return;
+    }
+    if (newPassword === currentPassword) {
+      setPasswordError(
+        "New password must be different from the current password.",
+      );
+      return;
+    }
+    setPasswordSaving(true);
+    setPasswordError("");
+    setPasswordMessage("");
+    try {
+      await changePassword(currentPassword, newPassword);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setPasswordMessage(
+        "Password updated. Other signed-in devices have been logged out.",
+      );
+    } catch (err) {
+      if (isSubscriptionInactive(err)) {
+        router.replace("/access-blocked");
+        return;
+      }
+      setPasswordError(errorMessage(err, "Failed to change password"));
+    } finally {
+      setPasswordSaving(false);
     }
   }
 
@@ -280,6 +335,76 @@ export default function SettingsPage() {
               <div className="md:col-span-2">
                 <Button type="submit" disabled={emailSaving}>
                   {emailSaving ? "Updating..." : "Change login email"}
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Password</CardTitle>
+            <CardDescription>
+              Change the password you use to sign in. Other signed-in devices
+              will be logged out.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form
+              className="grid gap-4 md:grid-cols-2"
+              onSubmit={onChangePassword}
+            >
+              <div className="space-y-1 md:col-span-2">
+                <Label htmlFor="current-password">
+                  Current password <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="current-password"
+                  type="password"
+                  autoComplete="current-password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  placeholder="Required to change password"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="new-password">New password</Label>
+                <Input
+                  id="new-password"
+                  type="password"
+                  autoComplete="new-password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="At least 8 characters"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="confirm-password">Confirm new password</Label>
+                <Input
+                  id="confirm-password"
+                  type="password"
+                  autoComplete="new-password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Repeat the new password"
+                />
+              </div>
+              <p className="text-muted-foreground text-xs md:col-span-2">
+                Use at least 8 characters, including a letter and a number.
+              </p>
+              {passwordError ? (
+                <p className="text-sm text-destructive md:col-span-2">
+                  {passwordError}
+                </p>
+              ) : null}
+              {passwordMessage ? (
+                <p className="text-sm text-green-600 md:col-span-2">
+                  {passwordMessage}
+                </p>
+              ) : null}
+              <div className="md:col-span-2">
+                <Button type="submit" disabled={passwordSaving}>
+                  {passwordSaving ? "Updating..." : "Change password"}
                 </Button>
               </div>
             </form>

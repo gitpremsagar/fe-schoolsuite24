@@ -79,3 +79,22 @@ export async function changeEmail(email: string, password: string) {
   }
   return data;
 }
+
+/**
+ * Change the password after verifying the current one.
+ * Other devices are signed out; this device receives fresh tokens.
+ */
+export async function changePassword(
+  currentPassword: string,
+  newPassword: string,
+) {
+  const data = await apiFetch<AuthResponse>("/auth/me/password", {
+    method: "PATCH",
+    body: { currentPassword, newPassword },
+  });
+  setAccessToken(data.accessToken);
+  if (data.user) {
+    setUser(data.user);
+  }
+  return data;
+}
