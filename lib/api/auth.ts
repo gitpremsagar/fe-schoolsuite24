@@ -46,6 +46,24 @@ export async function getMe() {
   return apiFetch<{ user: PublicUser & Record<string, unknown> }>("/auth/me");
 }
 
+/** Email a password reset link. The API answers the same for unknown emails. */
+export async function forgotPassword(email: string) {
+  return apiFetch<{ message: string }>("/auth/forgot-password", {
+    method: "POST",
+    body: { email },
+    auth: false,
+  });
+}
+
+/** Set a new password using a reset link token. The token is single use. */
+export async function resetPassword(token: string, password: string) {
+  return apiFetch<{ message: string }>("/auth/reset-password", {
+    method: "POST",
+    body: { token, password },
+    auth: false,
+  });
+}
+
 /**
  * Change the account's login email.
  * The server re-issues tokens for the new identity; store them and sync the user.

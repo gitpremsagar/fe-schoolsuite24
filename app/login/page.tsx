@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,8 +17,18 @@ import { Label } from "@/components/ui/label";
 import { dashboardPathForRole } from "@/lib/types";
 
 export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginPageContent />
+    </Suspense>
+  );
+}
+
+function LoginPageContent() {
   const { user, loading, login } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const resetSucceeded = searchParams.get("reset") === "success";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -54,6 +64,11 @@ export default function LoginPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {resetSucceeded ? (
+            <p className="mb-4 text-sm text-green-600">
+              Password updated. Sign in with your new password.
+            </p>
+          ) : null}
           <form className="space-y-4" onSubmit={onSubmit}>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
@@ -74,6 +89,14 @@ export default function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
               />
+              <div className="text-right">
+                <Link
+                  href="/forgot-password"
+                  className="text-xs text-muted-foreground underline"
+                >
+                  Forgot password?
+                </Link>
+              </div>
             </div>
             {error ? <p className="text-sm text-destructive">{error}</p> : null}
             <Button className="w-full" disabled={submitting}>
