@@ -52,6 +52,7 @@ type MonthCell = {
   feeAmount?: number | null;
   paidAt: string | null;
   notes: string | null;
+  hasPhysicalReceipt?: boolean;
   paymentId: string | null;
   /** False for months before the student's admission date. */
   isApplicable?: boolean;
@@ -333,23 +334,43 @@ function formatPaidAtLong(iso: string | null | undefined): string {
 
 function statusTitle(cell: MonthCell): string {
   if (cell.isApplicable === false) {
-    return "Not applicable · Before date of admission";
+    return "Not applicable\nBefore date of admission";
   }
   const feeValue = feeAmountOf(cell);
-  const fee = feeValue != null ? `Fee ${feeValue}` : "Fee not set";
   const balance = remainingDue(cell);
-  const dueLabel =
-    balance == null ? fee : `Due ${balance}${feeValue != null ? ` · ${fee}` : ""}`;
-  if (cell.status === "UNPAID") return `Unpaid · ${dueLabel}`;
-  if (cell.status === "WAIVED") return `Waived · ${dueLabel}`;
-  if (cell.status === "PARTIAL") {
-    return `Partial · Paid ${cell.amountPaid} · ${dueLabel}${
-      cell.paidAt ? ` · ${toDateInput(cell.paidAt)}` : ""
-    }`;
+  const lines: string[] = [];
+
+  if (cell.status === "UNPAID") {
+    lines.push("Unpaid");
+  } else if (cell.status === "WAIVED") {
+    lines.push("Waived");
+  } else if (cell.status === "PARTIAL") {
+    lines.push(`Partial · Paid ${cell.amountPaid}`);
+  } else {
+    lines.push(`Paid ${cell.amountPaid}`);
   }
-  return `Paid ${cell.amountPaid} · ${dueLabel}${
-    cell.paidAt ? ` · ${toDateInput(cell.paidAt)}` : ""
-  }`;
+
+  lines.push(feeValue != null ? `Fee ${feeValue}` : "Fee not set");
+  if (balance != null && balance > 0) {
+    lines.push(`Due ${balance}`);
+  }
+  if (cell.paidAt) {
+    const paidLabel = cell.status === "WAIVED" ? "Waiver" : "Payment";
+    lines.push(`${paidLabel} date ${formatPaidAtLong(cell.paidAt)}`);
+  }
+  if (cell.status === "PAID" || cell.status === "PARTIAL") {
+    lines.push(
+      `Physical receipt: ${cell.hasPhysicalReceipt ? "Available" : "Not available"}`,
+    );
+  }
+  if (cell.createdBy?.name != null) {
+    lines.push(`Created by ${cell.createdBy.name}`);
+  }
+  if (cell.createdAt != null) {
+    lines.push(`Created on ${formatDateTime(cell.createdAt)}`);
+  }
+
+  return lines.join("\n");
 }
 
 /** Fee amount for a cell (class fee, or paid + remaining due). */
@@ -437,6 +458,7 @@ type Editor = {
   amountPaid: number;
   paidAt: string | null;
   notes: string | null;
+  hasPhysicalReceipt: boolean;
   createdBy: AuditUser | null;
   updatedBy: AuditUser | null;
   createdAt: string | null;
@@ -486,6 +508,14 @@ function FeesPageContent() {
   const [editAmountPaid, setEditAmountPaid] = useState("");
   const [editPaidAt, setEditPaidAt] = useState(todayInput());
   const [editNotes, setEditNotes] = useState("");
+  const [editHasPhysicalReceipt, setEditHasPhysicalReceipt] = useState(false);
+  const [receiptSavingKey, setReceiptSavingKey] = useState<string | null>(null);
+  const [cellTip, setCellTip] = useState<{
+    text: string;
+    left: number;
+    top: number;
+    placement: "top" | "bottom";
+  } | null>(null);
   const [editError, setEditError] = useState("");
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>("asc");
@@ -758,6 +788,7 @@ function FeesPageContent() {
   }
 
   function openCell(student: Row, mo: MonthCol) {
+    setCellTip(null);
     const monthsMap = (student.months ?? {}) as Record<string, MonthCell>;
     const cell = monthsMap[mo.key];
     if (cell?.isApplicable === false) return;
@@ -796,6 +827,7 @@ function FeesPageContent() {
       amountPaid,
       paidAt,
       notes,
+      hasPhysicalReceipt: cell?.hasPhysicalReceipt ?? false,
       createdBy: cell?.createdBy ?? null,
       updatedBy: cell?.updatedBy ?? null,
       createdAt: cell?.createdAt ?? null,
@@ -826,12 +858,64 @@ function FeesPageContent() {
     );
     setEditPaidAt(toDateInput(paidAt) || todayInput());
     setEditNotes(notes ?? "");
+    setEditHasPhysicalReceipt(cell?.hasPhysicalReceipt ?? false);
     setEditError("");
   }
 
   function startEditingPayment() {
     setEditor((prev) => (prev ? { ...prev, mode: "edit" } : prev));
     setEditError("");
+  }
+
+  function setReceiptFlag(
+    studentId: string,
+    monthKey: string,
+    value: boolean,
+  ) {
+    setStudents((prev) =>
+      prev.map((s) => {
+        if (str(s.studentProfileId) !== studentId) return s;
+        const monthsMap = (s.months ?? {}) as Record<string, MonthCell>;
+        const current = monthsMap[monthKey];
+        if (!current) return s;
+        return {
+          ...s,
+          months: {
+            ...monthsMap,
+            [monthKey]: { ...current, hasPhysicalReceipt: value },
+          },
+        };
+      }),
+    );
+  }
+
+  async function togglePhysicalReceipt(
+    student: Row,
+    mo: MonthCol,
+    cell: MonthCell,
+    next: boolean,
+  ) {
+    if (!cell.paymentId) return;
+    const studentId = str(student.studentProfileId);
+    const key = `${studentId}:${mo.key}`;
+    if (receiptSavingKey === key) return;
+    setReceiptSavingKey(key);
+    setError("");
+    setMessage("");
+    setReceiptFlag(studentId, mo.key, next);
+    try {
+      await schoolApi.fees.updateReceipt(cell.paymentId, next);
+      setMessage(
+        next
+          ? "Physical receipt marked available."
+          : "Physical receipt marked not available.",
+      );
+    } catch (err) {
+      setReceiptFlag(studentId, mo.key, !next);
+      handleErr(err, "Failed to update physical receipt");
+    } finally {
+      setReceiptSavingKey(null);
+    }
   }
 
   const editFeeAmount = Number(editAmountDue);
@@ -903,6 +987,9 @@ function FeesPageContent() {
             ? editPaidAt
             : null,
         notes: editNotes.trim() || null,
+        hasPhysicalReceipt:
+          (status === "PAID" || status === "PARTIAL") &&
+          editHasPhysicalReceipt,
       });
       setMessage("Fee payment updated.");
       setEditor(null);
@@ -928,6 +1015,27 @@ function FeesPageContent() {
   function setHover(rowId: string | null, colKey: string | null) {
     setHoverRowId(rowId);
     setHoverColKey(colKey);
+  }
+
+  function showCellTip(el: HTMLElement, text: string) {
+    const rect = el.getBoundingClientRect();
+    const maxWidth = 280;
+    const left = Math.min(
+      Math.max(8, rect.left + rect.width / 2 - maxWidth / 2),
+      Math.max(8, window.innerWidth - maxWidth - 8),
+    );
+    const placement =
+      rect.bottom + 190 > window.innerHeight ? "top" : "bottom";
+    setCellTip({
+      text,
+      left,
+      top: placement === "top" ? rect.top - 8 : rect.bottom + 8,
+      placement,
+    });
+  }
+
+  function hideCellTip() {
+    setCellTip(null);
   }
 
   function clearHover() {
@@ -1144,7 +1252,11 @@ function FeesPageContent() {
             <div className="space-y-6">
             <div
               className="max-h-[calc(100vh-10rem)] max-w-full overflow-auto rounded-xl border"
-              onMouseLeave={clearHover}
+              onMouseLeave={() => {
+                clearHover();
+                hideCellTip();
+              }}
+              onScroll={hideCellTip}
             >
               <table className="w-max min-w-full border-collapse text-xs">
                 <thead>
@@ -1330,10 +1442,16 @@ function FeesPageContent() {
                                 onMouseEnter={() => setHover(id, mo.key)}
                               >
                                 <span
-                                  title={statusTitle({
-                                    ...cell,
-                                    isApplicable: false,
-                                  })}
+                                  onMouseEnter={(e) =>
+                                    showCellTip(
+                                      e.currentTarget,
+                                      statusTitle({
+                                        ...cell,
+                                        isApplicable: false,
+                                      }),
+                                    )
+                                  }
+                                  onMouseLeave={hideCellTip}
                                   className="mx-auto flex h-9 w-14 items-center justify-center rounded bg-transparent text-[10px] font-medium text-muted-foreground/70"
                                 >
                                   N/A
@@ -1355,12 +1473,18 @@ function FeesPageContent() {
                           return (
                             <td
                               key={mo.key}
-                              className={cn("p-1 text-center", colHighlight)}
+                              className={cn(
+                                "relative p-1 text-center",
+                                colHighlight,
+                              )}
                               onMouseEnter={() => setHover(id, mo.key)}
                             >
                               <button
                                 type="button"
-                                title={statusTitle(cell)}
+                                onMouseEnter={(e) =>
+                                  showCellTip(e.currentTarget, statusTitle(cell))
+                                }
+                                onMouseLeave={hideCellTip}
                                 onClick={() => openCell(s, mo)}
                                 className={cn(
                                   "mx-auto flex h-9 w-14 flex-col items-center justify-center rounded px-1 py-0.5 text-[11px] font-semibold leading-tight",
@@ -1379,6 +1503,44 @@ function FeesPageContent() {
                                   {subline}
                                 </span>
                               </button>
+                              {cell.paymentId != null &&
+                              (cell.status === "PAID" ||
+                                cell.status === "PARTIAL") ? (
+                                <label
+                                  onMouseEnter={(e) =>
+                                    showCellTip(
+                                      e.currentTarget,
+                                      statusTitle(cell),
+                                    )
+                                  }
+                                  onMouseLeave={hideCellTip}
+                                  className={cn(
+                                    "absolute right-1 top-1 z-10 inline-flex h-4 w-4 cursor-pointer items-center justify-center rounded bg-white/90 shadow-sm ring-1 ring-black/10",
+                                    receiptSavingKey === `${id}:${mo.key}` &&
+                                      "cursor-wait opacity-60",
+                                  )}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    className="h-3 w-3 cursor-pointer accent-emerald-600"
+                                    checked={cell.hasPhysicalReceipt === true}
+                                    disabled={
+                                      receiptSavingKey === `${id}:${mo.key}`
+                                    }
+                                    onChange={(e) =>
+                                      void togglePhysicalReceipt(
+                                        s,
+                                        mo,
+                                        cell,
+                                        e.target.checked,
+                                      )
+                                    }
+                                    aria-label={`Physical receipt available for ${str(
+                                      s.name,
+                                    )}, ${monthYearLabel(mo.year, mo.month)}`}
+                                  />
+                                </label>
+                              ) : null}
                             </td>
                           );
                         })}
@@ -1875,6 +2037,15 @@ function FeesPageContent() {
                     <span className="font-medium">
                       {formatPaidAtLong(editor.paidAt)}
                     </span>
+                    <span className="text-muted-foreground">Physical receipt</span>
+                    <span className="font-medium">
+                      {editor.currentStatus === "PAID" ||
+                      editor.currentStatus === "PARTIAL"
+                        ? editor.hasPhysicalReceipt
+                          ? "Available"
+                          : "Not available"
+                        : "—"}
+                    </span>
                     <span className="text-muted-foreground">Notes</span>
                     <span className="font-medium">
                       {editor.notes?.trim() ? editor.notes : "—"}
@@ -1960,6 +2131,9 @@ function FeesPageContent() {
                           }
                         } else if (next === "UNPAID") {
                           setEditAmountPaid("0");
+                        }
+                        if (next === "UNPAID" || next === "WAIVED") {
+                          setEditHasPhysicalReceipt(false);
                         }
                       }}
                     >
@@ -2055,6 +2229,32 @@ function FeesPageContent() {
                     </div>
                   ) : null}
 
+                  {editStatus === "PAID" || editStatus === "PARTIAL" ? (
+                    <label
+                      htmlFor="physical-receipt"
+                      className="flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 text-sm"
+                    >
+                      <input
+                        id="physical-receipt"
+                        type="checkbox"
+                        className="accent-primary mt-0.5 h-4 w-4 shrink-0 rounded border-input"
+                        checked={editHasPhysicalReceipt}
+                        onChange={(e) =>
+                          setEditHasPhysicalReceipt(e.target.checked)
+                        }
+                      />
+                      <span>
+                        <span className="font-medium">
+                          Physical receipt available
+                        </span>
+                        <span className="text-muted-foreground block text-xs">
+                          Tick if a physical receipt was issued for this
+                          payment.
+                        </span>
+                      </span>
+                    </label>
+                  ) : null}
+
                   {editStatus === "WAIVED" ? (
                     <div className="space-y-1">
                       <Label htmlFor="waived-at">Waiver date (optional)</Label>
@@ -2138,6 +2338,24 @@ function FeesPageContent() {
             void loadRegister();
           }}
         />
+
+        {cellTip ? (
+          <div
+            role="tooltip"
+            className="bg-popover text-popover-foreground pointer-events-none fixed z-50 max-w-[280px] rounded-md border px-3 py-2 text-sm leading-relaxed whitespace-pre-line shadow-lg"
+            style={{
+              left: cellTip.left,
+              top: cellTip.top,
+              width: "max-content",
+              transform:
+                cellTip.placement === "top"
+                  ? "translateY(-100%)"
+                  : undefined,
+            }}
+          >
+            {cellTip.text}
+          </div>
+        ) : null}
       </div>
     </DashboardShell>
   );

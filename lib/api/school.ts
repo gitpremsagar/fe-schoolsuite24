@@ -246,6 +246,11 @@ export const schoolApi = {
     },
     upsertPayment: (body: Record<string, unknown>) =>
       apiFetch("/fees/payments", { method: "PUT", body }),
+    updateReceipt: (paymentId: string, hasPhysicalReceipt: boolean) =>
+      apiFetch<{ payment: Record<string, unknown> }>(
+        `/fees/payments/${paymentId}/receipt`,
+        { method: "PATCH", body: { hasPhysicalReceipt } },
+      ),
   },
   eventFees: {
     list: (opts?: { academicYearId?: string; includeInactive?: boolean }) => {
