@@ -41,6 +41,8 @@ export default function SettingsPage() {
   const [form, setForm] = useState<Record<string, string>>({});
   const [establishedYear, setEstablishedYear] = useState("");
   const [saturdayIsWorkingDay, setSaturdayIsWorkingDay] = useState(true);
+  const [staffWorkStartTime, setStaffWorkStartTime] = useState("09:00");
+  const [staffWorkEndTime, setStaffWorkEndTime] = useState("17:00");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
@@ -84,6 +86,8 @@ export default function SettingsPage() {
         setForm(next);
         setEstablishedYear(str(school.establishedYear));
         setSaturdayIsWorkingDay(school.saturdayIsWorkingDay !== false);
+        setStaffWorkStartTime(str(school.staffWorkStartTime) || "09:00");
+        setStaffWorkEndTime(str(school.staffWorkEndTime) || "17:00");
       })
       .catch((err) => {
         if (active) handleErr(err, "Failed to load school");
@@ -196,6 +200,8 @@ export default function SettingsPage() {
       for (const f of FIELDS) body[f.key] = form[f.key] ?? "";
       body.establishedYear = establishedYear ? Number(establishedYear) : null;
       body.saturdayIsWorkingDay = saturdayIsWorkingDay;
+      body.staffWorkStartTime = staffWorkStartTime || null;
+      body.staffWorkEndTime = staffWorkEndTime || null;
       body.adminPassword = adminPassword;
       await schoolApi.updateMe(body);
       setMessage("School profile updated.");
@@ -260,6 +266,28 @@ export default function SettingsPage() {
                     />
                     Saturday is a working day
                   </label>
+                </div>
+                <div className="space-y-1">
+                  <Label>Staff work start</Label>
+                  <Input
+                    type="time"
+                    value={staffWorkStartTime}
+                    onChange={(e) => setStaffWorkStartTime(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Punch-ins after this time are marked late.
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <Label>Staff work end</Label>
+                  <Input
+                    type="time"
+                    value={staffWorkEndTime}
+                    onChange={(e) => setStaffWorkEndTime(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Punch-outs before this time are marked early.
+                  </p>
                 </div>
                 <div className="space-y-1 md:col-span-2">
                   <Label>

@@ -505,7 +505,13 @@ export default function StaffAttendancePage() {
                       {str(s.employeeCode)}
                     </td>
                     <td className="sticky left-16 z-10 bg-background px-3 py-1 font-medium whitespace-nowrap">
-                      {str(s.name)}
+                      <Link
+                        href={`/dashboard/school/attendance/staff/${id}?year=${year}&month=${month}`}
+                        title={`View ${str(s.name)}'s monthly punches`}
+                        className="rounded-sm underline-offset-4 hover:text-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                      >
+                        {str(s.name)}
+                      </Link>
                       <span className="ml-1 text-muted-foreground">
                         ({str(s.staffType)})
                       </span>

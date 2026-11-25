@@ -427,6 +427,43 @@ export const attendanceApi = {
       holidays: string[];
       staff: Array<Record<string, unknown>>;
     }>(`/attendance/staff/month?year=${year}&month=${month}`),
+  staffDetail: (staffId: string, year: number, month: number) =>
+    apiFetch<{
+      year: number;
+      month: number;
+      daysInMonth: number;
+      holidays: string[];
+      workStartTime: string;
+      workEndTime: string;
+      staffOptions: Array<{
+        staffProfileId: string;
+        employeeCode: string;
+        name: string;
+        staffType: string;
+      }>;
+      staff: {
+        staffProfileId: string;
+        employeeCode: string;
+        staffType: string;
+        name: string;
+        email: string;
+        role: string;
+      };
+      days: Array<{
+        date: string;
+        day: number;
+        weekday: number;
+        isHoliday: boolean;
+        status: "PRESENT" | "ABSENT" | null;
+        punchInAt: string | null;
+        punchOutAt: string | null;
+        punchInMethod: string | null;
+        punchOutMethod: string | null;
+        notes: string | null;
+      }>;
+    }>(
+      `/attendance/staff/${encodeURIComponent(staffId)}/month?year=${year}&month=${month}`,
+    ),
   saveStaffDay: (body: {
     staffProfileId: string;
     date: string;
